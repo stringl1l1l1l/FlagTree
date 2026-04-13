@@ -802,6 +802,7 @@ def insert_tile(
     x: tl.tensor,
     tile: tl.tensor,
     index,
+    strides: tuple = None,
     _semantic=None,
 ) -> tl.tensor:
     """
@@ -811,7 +812,14 @@ def insert_tile(
       1. Multi-dim static index: list/tuple of int/constexpr (e.g. [i, j])
       2. Scalar static index: int / tl.constexpr
       3. Scalar dynamic index: tl.tensor (runtime value)
+
+    strides controls tile start-step per dimension. If omitted, defaults to
+    tile shape (non-overlapping tile grid, backward compatible behavior).
     """
+    strides_ints = None
+    if strides is not None:
+        strides_ints = _unwrap_tile_shape(strides)
+
     # Basic type checks for source and tile tensors.
     if not isinstance(x, tl.tensor):
         raise ValueError(f"Source must be tl.tensor, but got {type(x)}")
@@ -831,13 +839,23 @@ def insert_tile(
         raise ValueError(f"Element type mismatch: source={x.type.element_ty}, tile={tile.type.element_ty}")
 
     # Build per-dimension tile grid: how many tiles exist in each axis.
+    # With explicit strides this can represent overlapping tiles.
+    strides_eff = strides_ints if strides_ints else tile_shape
+    if len(strides_eff) != len(src_shape):
+        raise ValueError(f"strides rank ({len(strides_eff)}) must match source rank ({len(src_shape)})")
+
     grid = []
-    for i, (src_dim, tile_dim) in enumerate(zip(src_shape, tile_shape)):
+    for i, (src_dim, tile_dim, stride_dim) in enumerate(zip(src_shape, tile_shape, strides_eff)):
         if tile_dim <= 0:
             raise ValueError(f"Tile dimension {i} must be positive, got {tile_dim}")
-        if src_dim % tile_dim != 0:
-            raise ValueError(f"Source dimension {i}: {src_dim} must be divisible by tile dimension {tile_dim}")
-        grid.append(src_dim // tile_dim)
+        if stride_dim <= 0:
+            raise ValueError(f"Stride dimension {i} must be positive, got {stride_dim}")
+        remainder = src_dim - tile_dim
+        if remainder < 0 or remainder % stride_dim != 0:
+            raise ValueError(
+                f"(src-tile) not divisible by stride at dim {i}: "
+                f"src={src_dim}, tile={tile_dim}, stride={stride_dim}")
+        grid.append(remainder // stride_dim + 1)
 
     # Parse index: dynamic scalar tensor or static scalar/multi-dim.
     is_dynamic = False
@@ -869,7 +887,8 @@ def insert_tile(
             # dynamic multi-dim index
             # ------------------------------------------------
             if has_tensor:
-                index_ir_handle = _linearize_dynamic_multidim_index(index_list, src_shape, tile_shape, _semantic)
+                index_ir_handle = _linearize_dynamic_multidim_index(index_list, src_shape, tile_shape, _semantic,
+                                                                    strides_ints)
                 is_dynamic = True
             # ------------------------------------------------
             # static multi-dim index
@@ -883,7 +902,7 @@ def insert_tile(
                     if iv < 0 or iv >= grid[i]:
                         raise ValueError(f"Index[{i}]={iv} out of bounds for tile grid (0~{grid[i]-1})")
                     idx.append(iv)
-                index_value = _linearize_static_multidim_index(idx, src_shape, tile_shape)
+                index_value = _linearize_static_multidim_index(idx, src_shape, tile_shape, strides_ints)
         else:
             # Path B: scalar static index -> treat as already-linearized tile id.
             scalar_int = _try_unwrap_int(index_unwrapped)
@@ -906,7 +925,7 @@ def insert_tile(
         try:
             from .semantic import TLESemantic
             if isinstance(_semantic, TLESemantic):
-                _semantic.analyze_insert_tile_operation(x, tile, index_value)
+                _semantic.analyze_insert_tile_operation(x, tile, index_value, strides_ints)
         except ImportError:
             pass
 
@@ -920,6 +939,7 @@ def insert_tile(
             x.handle,
             tile.handle,
             index_ir,
+            strides_ints or tile_shape,
         )
         return tl.tensor(output, x.type)
     except Exception as e:

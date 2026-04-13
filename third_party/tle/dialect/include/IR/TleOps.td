@@ -48,8 +48,12 @@ def Tle_InsertTileOp
     : Tle_Op<"insert_tile", [Pure,
                              DeclareOpInterfaceMethods<InferTypeOpInterface>,
 ]> {
-  let arguments = (ins TT_Tensor:$src, TT_Tensor:$tile, TT_IntLike:$index);
+  let arguments = (ins TT_Tensor:$src, TT_Tensor:$tile, TT_IntLike:$index,
+      OptionalAttr<DenseI64ArrayAttr>:$strides);
   let results = (outs TT_Tensor:$result);
+  let builders = [OpBuilder<(ins "Value":$src, "Value":$tile,
+      "Value":$index,
+      CArg<"ArrayRef<int64_t>", "{}">:$strides)>];
   let assemblyFormat = [{
     $src `[` $index `]` `=` $tile attr-dict `:` qualified(type($src)) `,` qualified(type($index)) `,` qualified(type($tile)) `->` qualified(type($result))
   }];

@@ -90,11 +90,12 @@ void init_triton_tle_ir(py::module &&m) {
       .def(
           "create_insert_tile",
           [](TritonOpBuilder &self, Value &input, Value &tile,
-             Value &index) -> Value {
-            auto op = self.create<tle::InsertTileOp>(input, tile, index);
+             Value &index, std::vector<int64_t> strides) -> Value {
+            auto op = self.create<tle::InsertTileOp>(input, tile, index, strides);
             return op.getResult();
           },
           py::arg("input"), py::arg("tile"), py::arg("index"),
+          py::arg("strides") = std::vector<int64_t>{},
           "Create insert_tile operation")
       // TLE-Struct
       .def("make_swizzled_shared_encoding_attr",

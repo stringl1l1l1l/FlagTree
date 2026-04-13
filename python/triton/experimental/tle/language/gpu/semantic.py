@@ -169,7 +169,7 @@ class TLESemantic:
                     raise TLESemanticError(f"Linear index {val} out of bounds for total tiles {total_tiles}",
                                            "extract_tile")
 
-    def validate_insert_tile_params(self, src: tl.tensor, tile: tl.tensor, index) -> None:
+    def validate_insert_tile_params(self, src: tl.tensor, tile: tl.tensor, index, strides=None) -> None:
         """
 
         """
@@ -202,12 +202,20 @@ class TLESemantic:
         if any(not isinstance(d, int) for d in src_shape_unwrapped):
             raise TLESemanticError("Source shape must be static integers for insert_tile", "insert_tile")
 
+        strides_eff = strides if strides else tile_shape_unwrapped
+        if len(strides_eff) != len(src_shape_unwrapped):
+            raise TLESemanticError("strides rank must match source rank", "insert_tile")
+
         grid = []
-        for i, (src_dim, tile_dim) in enumerate(zip(src_shape_unwrapped, tile_shape_unwrapped)):
-            if src_dim % tile_dim != 0:
+        for i, (src_dim, tile_dim, stride_dim) in enumerate(zip(src_shape_unwrapped, tile_shape_unwrapped, strides_eff)):
+            if stride_dim <= 0:
+                raise TLESemanticError(f"Stride dimension {i} must be positive, got {stride_dim}", "insert_tile")
+            remainder = src_dim - tile_dim
+            if remainder < 0 or remainder % stride_dim != 0:
                 raise TLESemanticError(
-                    f"Source dimension {i}: {src_dim} must be divisible by tile dimension {tile_dim}", "insert_tile")
-            grid.append(src_dim // tile_dim)
+                    f"(src-tile) not divisible by stride at dim {i}: src={src_dim}, tile={tile_dim}, stride={stride_dim}",
+                    "insert_tile")
+            grid.append(remainder // stride_dim + 1)
 
         # index checks
         if isinstance(index, (tuple, list)):
@@ -240,9 +248,10 @@ class TLESemantic:
         src: tl.tensor,
         tile: tl.tensor,
         index,
+        strides=None,
     ) -> None:
         """Analyze insert_tile operation semantics """
-        self.validate_insert_tile_params(src, tile, index)
+        self.validate_insert_tile_params(src, tile, index, strides)
 
     def analyze_alloc_operation(self, shape: Sequence[Union[int, any]], dtype: tl.dtype,
                                 layout: Optional[tle.shared_layout], storage: tle.scope) -> Tuple[List[int], tl.dtype]:
