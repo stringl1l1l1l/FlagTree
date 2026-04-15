@@ -8,3 +8,5 @@ add_triton_library(MagicKernelIR
   LINK_LIBS PUBLIC
   MLIRIR
 )
+
+add_subdirectory(Transforms)

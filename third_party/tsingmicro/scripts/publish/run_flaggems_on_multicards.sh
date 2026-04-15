@@ -26,9 +26,9 @@ test_set=ci_ops
 device_count=1
 quick_mode=0
 skip_device=
-precision_priority=1
-txda_skip_ops="repeat_interleave.self_int,pad,to.dtype,uniform_,sort.values_stable,contiguous,resolve_conj"
-txda_fallback_cpu_ops="random_,quantile,_local_scalar_dense,arange,unfold,index,le,all,ge,pad,to,gather_backward,zero_,view_as_real,resolve_neg,embedding_backward,sort,repeat_interleave,rsub,hstack,vstack,min,uniform_,abs,ne,eq,mul,bitwise_and,masked_select,max,ceil,div,gt,lt,sum,scatter,where,resolve_conj,isclose,isfinite,tile,equal,gather,contiguous"
+precision_priority=2
+txda_skip_ops="repeat_interleave.self_int,pad,uniform_,sort.values_stable,resolve_conj"
+txda_fallback_cpu_ops="random_,quantile,_local_scalar_dense,arange,unfold,index,le,all,ge,pad,to,gather_backward,zero_,view_as_real,resolve_neg,embedding_backward,sort,repeat_interleave,rsub,hstack,vstack,min,uniform_,abs,ne,eq,mul,bitwise_and,masked_select,max,ceil,div,gt,lt,sum,scatter,where,resolve_conj,isclose,isfinite,tile,equal,gather,_index_put_impl_,sub,to_dtype,isneginf,tril,count_nonzero,exp,exp_out,exp.out,fill_,flip,diag,view_as_complex,cat,log_sigmoid,kron,add"
 
 if [ $# -ge 1 ]; then
 	test_set=$1
@@ -60,6 +60,9 @@ export LLVM_BINARY_DIR=$LLVM/bin
 export PYTHONPATH=$LLVM/python_packages/mlir_core:$PYTHONPATH
 export LD_LIBRARY_PATH=$TX8_DEPS_ROOT/lib:$LD_LIBRARY_PATH
 export TRITON_ALWAYS_COMPILE=1
+#autotune不走do_bench函数,每个config kernel只会运行一次,减少运行耗时
+export TRITON_QUICK_MODE=1
+export TRITON_PRINT_AUTOTUNING=1
 #测试任务相关环境变量
 export JSON_FILE_PATH=$project_dir/flaggems_tests
 export PRECISION_PRIORITY=$precision_priority

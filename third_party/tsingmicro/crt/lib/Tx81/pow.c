@@ -1,6 +1,6 @@
 #include "math.h"
 #include "stdlib.h"
-#include "tx81.h"
+#include "tx81_run.h"
 #include <stdbool.h>
 // #include <rtthread.h>
 
@@ -339,7 +339,7 @@ int32_t round_to_even2(float value) {
     return INT32_MIN;
   }
   // 获取整数部分
-  float int_part = floor(fabs(value)); // 使用 fabs 来处理负数
+  float int_part = floorf(fabs(value)); // 使用 fabs 来处理负数
   // 获取小数部分
   float frac_part = fabs(value) - int_part;
 

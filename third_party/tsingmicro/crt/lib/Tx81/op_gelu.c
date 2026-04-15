@@ -266,9 +266,9 @@ const struct erff_data __erff_data = {
             {0x1.000000p+0, 0x1.10b148p-23}},
 };
 
-hybrid_value get_ptr_value_by_idx_new(void *addr, size_t idx,
+triton_hybrid_value get_ptr_value_by_idx_new(void *addr, size_t idx,
                                       Data_Format dtype) {
-  hybrid_value value = {0};
+  triton_hybrid_value value = {0};
   switch (dtype) {
   case Fmt_FP16:
   case Fmt_BF16:
@@ -291,7 +291,7 @@ void get_erf_value(void *in_addr, void *out_addr, uint64_t count,
   float OneThird_f = 0.33333334f;
   float OneSqrtTwo_f = 0.7071067811865475f;
   for (size_t idx = 0; idx < count; idx++) {
-    hybrid_value in_value = get_ptr_value_by_idx_new(in_addr, idx, dtype);
+    triton_hybrid_value in_value = get_ptr_value_by_idx_new(in_addr, idx, dtype);
     float in = set_value2float32(dtype, (int8_t *)&in_value);
     tmp_32suf x;
     x.f = in * OneSqrtTwo_f;
@@ -300,7 +300,7 @@ void get_erf_value(void *in_addr, void *out_addr, uint64_t count,
     uint32_t sign = ix & ~0x7fffffff;
     in = 0.5f * in;
     if (ia < 0x20800000) {
-      hybrid_value value1 =
+      triton_hybrid_value value1 =
           set_float2value(dtype, in * (1.0f + (TwoSqrtPI_f * x.f + x.f)));
       set_ptr_value_by_idx(out_addr, value1, idx, dtype);
       continue;
@@ -318,12 +318,12 @@ void get_erf_value(void *in_addr, void *out_addr, uint64_t count,
       y.f = -(OneThird_f * d + r);
       y.f = (y.f * d2 + d) * scale + erfr;
       y.u = y.u | sign;
-      hybrid_value value2 = set_float2value(dtype, in * (1.0f + y.f));
+      triton_hybrid_value value2 = set_float2value(dtype, in * (1.0f + y.f));
       set_ptr_value_by_idx(out_addr, value2, idx, dtype);
       continue;
     }
     if (ia >= 0x7f800000) {
-      hybrid_value value3 = set_float2value(
+      triton_hybrid_value value3 = set_float2value(
           dtype, in * (1.0f + ((1.0f - (float)(sign >> 30)) + 1.0f / x.f)));
       set_ptr_value_by_idx(out_addr, value3, idx, dtype);
       continue;
@@ -331,9 +331,9 @@ void get_erf_value(void *in_addr, void *out_addr, uint64_t count,
     tmp_32suf tmp;
     tmp.f = 1.0f;
     tmp.u = sign | tmp.u;
-    hybrid_value value4 = set_float2value(dtype, in * (1.0f + tmp.f));
+    triton_hybrid_value value4 = set_float2value(dtype, in * (1.0f + tmp.f));
     set_ptr_value_by_idx(out_addr, value4, idx, dtype);
-    TsmWaitfinish();
+    // RcsWaitfinish();
   }
 }
 
@@ -351,6 +351,8 @@ void get_tanh_value(uint64_t *in, uint64_t *imm, uint64_t *out,
   uint32_t a3 = converter.i;
   converter.f = 0.5f;
   uint32_t a4 = converter.i;
+  converter.f = 44.3f;
+  uint32_t a5 = converter.i;
 
   uint16_t rnd_mode = 0;
 
@@ -362,149 +364,189 @@ void get_tanh_value(uint64_t *in, uint64_t *imm, uint64_t *out,
   uint64_t in_addr = (uint64_t)in;
   uint64_t out_addr = (uint64_t)out;
 
-  // TsmActivation *activation =
-  //     (TsmActivation *)getTsmOpPointer()->activation_pointer;
-  // TsmActivationInstr activationParam = {I_CGRA, {0,}, {0,}};
-  // TsmArith *arith = (TsmArith *)getTsmOpPointer()->arith_pointer;
-  // TsmArithInstr arithParam = {I_CGRA, {0,}, {0,}};
-  // TsmConvert *convert = (TsmConvert *)getTsmOpPointer()->convert_pointer;
+  // RcsActivation *activation =
+  //     (RcsActivation *)getRcsOpPointer()->activation_pointer;
+  // RcsActivationInstr activationParam = {I_CGRA, {0,}, {0,}};
+  // RcsArith *arith = (RcsArith *)getRcsOpPointer()->arith_pointer;
+  // RcsArithInstr arithParam = {I_CGRA, {0,}, {0,}};
+  // RcsConvert *convert = (RcsConvert *)getRcsOpPointer()->convert_pointer;
   // CT_Param ct_params = {I_CGRA, {0}, {0}};
 
-  TsmActivation *activation = TsmNewActivation();
-  TsmActivationInstr activationParam = {I_CGRA,
-                                        {
-                                            0,
-                                        },
-                                        {
-                                            0,
-                                        }};
-  TsmArith *arith = TsmNewArith();
-  TsmArithInstr arithParam = {I_CGRA,
-                              {
-                                  0,
-                              },
-                              {
-                                  0,
-                              }};
-  TsmConvert *convert = TsmNewConvert();
+  RcsRelation *relation = RcsNewRelation();
+  RcsRelationInstr relationParam = {I_CGRA, {0}, {0}};
+  RcsActivation *activation = RcsNewActivation();
+  RcsActivationInstr activationParam = {I_CGRA, {0,}, {0,}};
+  RcsArith *arith = RcsNewArith();
+  RcsArithInstr arithParam = {I_CGRA, {0,}, {0,}};
+  RcsConvert *convert = RcsNewConvert();
   CT_Param ct_params = {I_CGRA, {0}, {0}};
 
   if (fmt == Fmt_FP16) {
     convert->FP16_FP32(&ct_params, in_addr, imm_a, elem_count);
-    cycle_value += TsmExecute(&ct_params);
+    cycle_value += RcsExecute(&ct_params);
 
     arith->MulVV(&arithParam, imm_a, imm_a, imm_b, elem_count, rnd_mode,
                  Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVV(&arithParam, imm_a, imm_b, imm_b, elem_count, rnd_mode,
                  Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVS(&arithParam, imm_b, a1, imm_b, elem_count, rnd_mode, Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->AddVV(&arithParam, imm_a, imm_b, imm_b, elem_count, rnd_mode,
                  Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
     arith->MulVS(&arithParam, imm_b, a2, imm_b, elem_count, rnd_mode, Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
+
+    relation->LessThenVS(&relationParam, imm_b, a5, imm_a, elem_count, Fmt_FP32);
+    cycle_value += RcsExecute(&relationParam);
+
+    arith->MulVV(&arithParam, imm_b, imm_a, imm_b, elem_count, rnd_mode, Fmt_FP32);
+    cycle_value += RcsExecute(&arithParam);
+
+    relation->LessThenVS(&relationParam, imm_a, a3, imm_a, elem_count, Fmt_FP32);
+    cycle_value += RcsExecute(&relationParam);
+
+    arith->MulVS(&arithParam, imm_a, a5, imm_a, elem_count, rnd_mode, Fmt_FP32);
+    cycle_value += RcsExecute(&arithParam);
+
+    arith->AddVV(&arithParam, imm_b, imm_a, imm_b, elem_count, rnd_mode, Fmt_FP32);
+    cycle_value += RcsExecute(&arithParam);
 
     activation->Tanh(&activationParam, imm_b, imm_b, elem_count, Fmt_FP32);
-    cycle_value += TsmExecute(&activationParam);
+    cycle_value += RcsExecute(&activationParam);
 
     arith->AddVS(&arithParam, imm_b, a3, imm_b, elem_count, rnd_mode, Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
+
+    convert->FP16_FP32(&ct_params, in_addr, imm_a, elem_count);
+    cycle_value += RcsExecute(&ct_params);
 
     arith->MulVV(&arithParam, imm_a, imm_b, imm_b, elem_count, rnd_mode,
                  Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVS(&arithParam, imm_b, a4, imm_b, elem_count, rnd_mode, Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     convert->FP32_FP16(&ct_params, imm_b, out_addr, elem_count,
                        RND_NEAREST_EVEN);
-    cycle_value += TsmExecute(&ct_params);
+    cycle_value += RcsExecute(&ct_params);
   } else if (fmt == Fmt_BF16) {
     convert->BF16_FP32(&ct_params, in_addr, imm_a, elem_count);
-    cycle_value += TsmExecute(&ct_params);
+    cycle_value += RcsExecute(&ct_params);
 
     arith->MulVV(&arithParam, imm_a, imm_a, imm_b, elem_count, rnd_mode,
                  Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVV(&arithParam, imm_a, imm_b, imm_b, elem_count, rnd_mode,
                  Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVS(&arithParam, imm_b, a1, imm_b, elem_count, rnd_mode, Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->AddVV(&arithParam, imm_a, imm_b, imm_b, elem_count, rnd_mode,
                  Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVS(&arithParam, imm_b, a2, imm_b, elem_count, rnd_mode, Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
+    relation->LessThenVS(&relationParam, imm_b, a5, imm_a, elem_count, Fmt_FP32);
+    cycle_value += RcsExecute(&relationParam);
+
+    arith->MulVV(&arithParam, imm_b, imm_a, imm_b, elem_count, rnd_mode, Fmt_FP32);
+    cycle_value += RcsExecute(&arithParam);
+
+    relation->LessThenVS(&relationParam, imm_a, a3, imm_a, elem_count, Fmt_FP32);
+    cycle_value += RcsExecute(&relationParam);
+
+    arith->MulVS(&arithParam, imm_a, a5, imm_a, elem_count, rnd_mode, Fmt_FP32);
+    cycle_value += RcsExecute(&arithParam);
+
+    arith->AddVV(&arithParam, imm_b, imm_a, imm_b, elem_count, rnd_mode, Fmt_FP32);
+    cycle_value += RcsExecute(&arithParam);
     activation->Tanh(&activationParam, imm_b, imm_b, elem_count, Fmt_FP32);
-    cycle_value += TsmExecute(&activationParam);
+    cycle_value += RcsExecute(&activationParam);
     arith->AddVS(&arithParam, imm_b, a3, imm_b, elem_count, rnd_mode, Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
+
+    convert->BF16_FP32(&ct_params, in_addr, imm_a, elem_count);
+    cycle_value += RcsExecute(&ct_params);
 
     arith->MulVV(&arithParam, imm_a, imm_b, imm_b, elem_count, rnd_mode,
                  Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVS(&arithParam, imm_b, a4, imm_b, elem_count, rnd_mode, Fmt_FP32);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     convert->FP32_BF16(&ct_params, imm_b, out_addr, elem_count,
                        RND_NEAREST_EVEN);
-    cycle_value += TsmExecute(&ct_params);
+    cycle_value += RcsExecute(&ct_params);
   } else if (fmt == Fmt_FP32) {
     arith->MulVV(&arithParam, in_addr, in_addr, out_addr, elem_count, rnd_mode,
                  fmt);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVV(&arithParam, in_addr, out_addr, out_addr, elem_count, rnd_mode,
                  fmt);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVS(&arithParam, out_addr, a1, out_addr, elem_count, rnd_mode,
                  fmt);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->AddVV(&arithParam, in_addr, out_addr, out_addr, elem_count, rnd_mode,
                  fmt);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVS(&arithParam, out_addr, a2, out_addr, elem_count, rnd_mode,
                  fmt);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
+
+    relation->LessThenVS(&relationParam, out_addr, a5, imm_a, elem_count, fmt);
+    cycle_value += RcsExecute(&relationParam);
+
+    arith->MulVV(&arithParam, out_addr, imm_a, out_addr, elem_count, rnd_mode, fmt);
+    cycle_value += RcsExecute(&arithParam);
+
+    relation->LessThenVS(&relationParam, imm_a, a3, imm_a, elem_count, fmt);
+    cycle_value += RcsExecute(&relationParam);
+
+    arith->MulVS(&arithParam, imm_a, a5, imm_a, elem_count, rnd_mode, fmt);
+    cycle_value += RcsExecute(&arithParam);
+
+    arith->AddVV(&arithParam, out_addr, imm_a, out_addr, elem_count, rnd_mode, fmt);
+    cycle_value += RcsExecute(&arithParam);
 
     activation->Tanh(&activationParam, out_addr, out_addr, elem_count, fmt);
-    cycle_value += TsmExecute(&activationParam);
+    cycle_value += RcsExecute(&activationParam);
 
     arith->AddVS(&arithParam, out_addr, a3, out_addr, elem_count, rnd_mode,
                  fmt);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVV(&arithParam, in_addr, out_addr, out_addr, elem_count, rnd_mode,
                  fmt);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
 
     arith->MulVS(&arithParam, out_addr, a4, out_addr, elem_count, rnd_mode,
                  fmt);
-    cycle_value += TsmExecute(&arithParam);
+    cycle_value += RcsExecute(&arithParam);
   } else {
   }
 }
 
 void op_gelu_none(uint64_t *src, uint64_t *dst, uint32_t elem_count,
                   uint16_t fmt) {
-  TsmWaitfinish();
+  RcsWaitfinish();
   uint8_t *in_ddr = (uint8_t *)get_spm_memory_mapping((uint64_t)(src));
   uint8_t *out_ddr = (uint8_t *)get_spm_memory_mapping((uint64_t)(dst));
 
@@ -518,7 +560,7 @@ void op_gelu_none(uint64_t *src, uint64_t *dst, uint32_t elem_count,
 
 void op_gelu_tanh(uint64_t *src, uint64_t *imm, uint64_t *dst,
                   uint32_t elem_count, uint16_t fmt) {
-  TsmWaitfinish();
+  RcsWaitfinish();
   get_tanh_value(src, imm, dst, elem_count, fmt);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 }

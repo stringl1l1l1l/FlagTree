@@ -26,18 +26,34 @@ using namespace mk;
 
 namespace {
 
-bool isConstantTensor(Value &v, double targetValue, bool isApprox) {
-  auto fillOp = dyn_cast<linalg::FillOp>(v.getDefiningOp());
-  if (!fillOp) {
-    return false;
-  }
+static int normalizePrecisionMode(int precisionMode) {
+  if (precisionMode <= 0)
+    return 0;
+  if (precisionMode == 1)
+    return 1;
+  return 2;
+}
 
-  auto fillValue = fillOp.getInputs()[0];
-  auto constOp = fillValue.getDefiningOp<arith::ConstantOp>();
+static bool preservesIntegerPrecision(Type elementType, int precisionMode) {
+  if (!isa<IntegerType>(elementType))
+    return false;
+
+  int bitWidth = elementType.getIntOrFloatBitWidth();
+  switch (normalizePrecisionMode(precisionMode)) {
+  case 0:
+    return false;
+  case 1:
+    return bitWidth >= 64;
+  default:
+    return bitWidth >= 32;
+  }
+}
+
+bool isConstantValue(Value &v, double targetValue, bool isApprox=false) {
+  auto constOp = v.getDefiningOp<arith::ConstantOp>();
   if (!constOp) {
     return false;
   }
-
   if (auto val = dyn_cast<FloatAttr>(constOp.getValue())) {
     return isApprox ? (std::abs(val.getValueAsDouble() - targetValue) < 1e-5)
                     : (val.getValueAsDouble() == targetValue);
@@ -45,8 +61,17 @@ bool isConstantTensor(Value &v, double targetValue, bool isApprox) {
   if (auto val = dyn_cast<IntegerAttr>(constOp.getValue())) {
     return val.getValue() == static_cast<int64_t>(targetValue);
   }
-
   return false;
+}
+
+bool isConstantTensor(Value &v, double targetValue, bool isApprox) {
+  auto fillOp = dyn_cast<linalg::FillOp>(v.getDefiningOp());
+  if (!fillOp) {
+    return false;
+  }
+
+  auto fillValue = fillOp.getInputs()[0];
+  return isConstantValue(fillValue, targetValue, isApprox);
 }
 
 // Check if the given value is a tensor filled with 0.
@@ -215,8 +240,19 @@ public:
   LogicalResult matchAndRewrite(linalg::MatmulOp op,
                                 PatternRewriter &rewriter) const override {
     Location loc = op.getLoc();
-    auto a = channelNorm(rewriter, loc, op.getInputs()[0]);
-    auto b = channelNorm(rewriter, loc, op.getInputs()[1]);
+    auto lhs = op.getInputs()[0];
+    auto rhs = op.getInputs()[1];
+    auto lhsTranspose = lhs.getDefiningOp<linalg::TransposeOp>();
+    auto rhsTranspose = rhs.getDefiningOp<linalg::TransposeOp>();
+    bool isLhsTrans = lhsTranspose != nullptr &&
+                      lhsTranspose.getPermutation() == ArrayRef<int64_t>{1, 0};
+    bool isRhsTrans = rhsTranspose != nullptr &&
+                      rhsTranspose.getPermutation() == ArrayRef<int64_t>{1, 0};
+
+    auto a =
+        channelNorm(rewriter, loc, isLhsTrans ? lhsTranspose.getInput() : lhs);
+    auto b =
+        channelNorm(rewriter, loc, isRhsTrans ? rhsTranspose.getInput() : rhs);
     auto fillOp = op.getOutputs()[0].getDefiningOp<linalg::FillOp>();
 
     if (fillOp && matchPattern(fillOp.getInputs()[0], m_AnyZeroFloat())) {
@@ -225,7 +261,9 @@ public:
           ValueRange{});
       res = rewriter
                 .create<mk::DotOp>(loc, res.getType(), a, b, res,
-                                   false /* en_psum */)
+                                   false /* en_psum */,
+                                   isLhsTrans /*is transposed matrix A*/,
+                                   !isRhsTrans /*is transposed matrix B*/)
                 ->getResult(0);
       rewriter.replaceOp(op, dechannelNorm(rewriter, loc, res));
     } else if (auto optFromLoopInfo = findForOpAndIdx(op)) {
@@ -254,7 +292,9 @@ public:
       rewriter.setInsertionPoint(op);
       auto dot = rewriter.create<mk::DotOp>(
           loc, newForOp->getResultTypes()[idx], a, b,
-          newForOp.getRegionIterArg(idx), true /* en_psum */);
+          newForOp.getRegionIterArg(idx), true /* en_psum */,
+          isLhsTrans /*is transposed matrix A*/,
+          !isRhsTrans /*is transposed matrix B*/);
       body->getTerminator()->setOperand(idx, dot->getResult(0));
       rewriter.eraseOp(op);
 
@@ -267,7 +307,9 @@ public:
       Value output = channelNorm(rewriter, loc, op.getOutputs()[0]);
       output = rewriter
                    .create<mk::DotOp>(loc, output.getType(), a, b, output,
-                                      true /* en_psum */)
+                                      true /* en_psum */,
+                                      isLhsTrans /*is transposed matrix A*/,
+                                      !isRhsTrans /*is transposed matrix B*/)
                    ->getResult(0);
       rewriter.replaceOp(op, dechannelNorm(rewriter, loc, output));
     }
@@ -1356,6 +1398,11 @@ struct DivFloatOpRewrite : public OpRewritePattern<linalg::GenericOp> {
 
     Location loc = op->getLoc();
 
+    // Read rnd_mode attribute from the original DivFOp
+    auto regionOps = getRegionOps<linalg::GenericOp>(op);
+    auto divOp = cast<arith::DivFOp>(regionOps[0]);
+    auto rndModeAttr = divOp->getAttr("rnd_mode");
+
     auto inputTensorType =
         dyn_cast<RankedTensorType>(op.getInputs()[0].getType());
     auto rank = inputTensorType.getRank();
@@ -1378,8 +1425,10 @@ struct DivFloatOpRewrite : public OpRewritePattern<linalg::GenericOp> {
         op, outputTensorType, ValueRange{op.getInputs()[0], recip},
         ValueRange{empty}, binaryIndexingMaps, iteratorTypes,
         [&](OpBuilder &b, Location loc, ValueRange args) {
-          Value result = b.create<arith::MulFOp>(loc, args[0], args[1]);
-          b.create<linalg::YieldOp>(loc, result);
+          auto mulOp = b.create<arith::MulFOp>(loc, args[0], args[1]);
+          if (rndModeAttr)
+            mulOp->setAttr("rnd_mode", rndModeAttr);
+          b.create<linalg::YieldOp>(loc, mulOp.getResult());
         });
 
     return success();
@@ -2156,9 +2205,9 @@ struct CastElementwiseOpIOToFloatPattern
     auto outputs = op.getOutputs();
 
     if (SIToFPOpBuildFnMap.contains(OpName) &&
-        (!precisionPriority || cast<RankedTensorType>(outputs[0].getType())
-                                       .getElementType()
-                                       .getIntOrFloatBitWidth() < 32)) {
+        !preservesIntegerPrecision(
+            cast<RankedTensorType>(outputs[0].getType()).getElementType(),
+            precisionMode)) {
       assert(outputs.size() == 1 &&
              "Elementwise conversion only support single output");
       assert(cast<RankedTensorType>(outputs[0].getType())
@@ -2176,8 +2225,8 @@ struct CastElementwiseOpIOToFloatPattern
       if (inputType.getNumElements() < 8)
         return failure();
 
-      if (precisionPriority &&
-          inputType.getElementType().getIntOrFloatBitWidth() >= 32)
+      if (preservesIntegerPrecision(inputType.getElementType(),
+                                    precisionMode))
         return failure();
 
       auto outputType =
@@ -2228,7 +2277,10 @@ struct CastElementwiseOpIOToFloatPattern
     }
 
     if (auto divsiOp = dyn_cast<arith::DivSIOp>(elemWiseOp)) {
-      if (precisionPriority)
+      if (normalizePrecisionMode(precisionMode) >= 2 ||
+          preservesIntegerPrecision(
+              cast<RankedTensorType>(outputs[0].getType()).getElementType(),
+              precisionMode))
         return failure();
       return convertSIOpToF32Op(
           op, rewriter, op.getInputs(), op.getOutputs(),
@@ -2267,9 +2319,9 @@ struct CastElementwiseOpIOToFloatPattern
   }
 
   CastElementwiseOpIOToFloatPattern(MLIRContext *context,
-                                    bool precisionPriority)
+                                    int precisionMode)
       : OpRewritePattern<linalg::GenericOp>(context),
-        precisionPriority(precisionPriority) {}
+        precisionMode(precisionMode) {}
 
 private:
   // Map from SIOp to FPOp conversion functions
@@ -2278,7 +2330,7 @@ private:
                                           ValueRange, ValueRange)>>
       SIToFPOpBuildFnMap;
 
-  bool precisionPriority = false;
+  int precisionMode = 0;
 };
 
 struct CastReduceOpIOToFloatPattern
@@ -2322,10 +2374,10 @@ struct CastReduceOpIOToFloatPattern
     OperationName OpName = reduceOp->getName();
 
     if (SIToFPOpBuildFnMap.contains(OpName) &&
-        (!precisionPriority ||
-         cast<RankedTensorType>(op.getInits().front().getType())
-                 .getElementType()
-                 .getIntOrFloatBitWidth() < 32)) {
+        !preservesIntegerPrecision(
+            cast<RankedTensorType>(op.getInits().front().getType())
+                .getElementType(),
+            precisionMode)) {
 
       assert(op.getInits().size() == 1 &&
              "Reduce conversion only support single output");
@@ -2346,9 +2398,9 @@ struct CastReduceOpIOToFloatPattern
     return failure();
   }
 
-  CastReduceOpIOToFloatPattern(MLIRContext *context, bool precisionPriority)
+  CastReduceOpIOToFloatPattern(MLIRContext *context, int precisionMode)
       : OpRewritePattern<linalg::ReduceOp>(context),
-        precisionPriority(precisionPriority) {}
+        precisionMode(precisionMode) {}
 
 private:
   // Map from SIOp to FPOp conversion functions
@@ -2357,7 +2409,7 @@ private:
                                           ValueRange, ValueRange)>>
       SIToFPOpBuildFnMap;
 
-  bool precisionPriority = false;
+  int precisionMode = 0;
 };
 
 template <typename MKOpT>
@@ -2533,12 +2585,12 @@ struct BoolOpShapeCanonicalizePattern : OpRewritePattern<linalg::GenericOp> {
     return success();
   }
 
-  BoolOpShapeCanonicalizePattern(MLIRContext *context, bool precisionPriority)
+  BoolOpShapeCanonicalizePattern(MLIRContext *context, int precisionMode)
       : OpRewritePattern<linalg::GenericOp>(context),
-        precisionPriority(precisionPriority) {}
+        precisionMode(precisionMode) {}
 
 private:
-  bool precisionPriority = false;
+  int precisionMode = 0;
 };
 
 struct SigmoidFusionPattern : OpRewritePattern<linalg::GenericOp> {
@@ -2648,7 +2700,6 @@ struct GeluFusionPattern : OpRewritePattern<linalg::GenericOp> {
   }
 
   bool matchGeluErf(linalg::GenericOp op, Value input) const {
-    // Match the mul op: (x * scale)
     auto mulErfResult = op.getInputs()[0];
     auto mulErfGenericOp = mulErfResult.getDefiningOp<linalg::GenericOp>();
     if (!mulErfGenericOp || !checkGenericOp<arith::MulFOp>(mulErfGenericOp)) {
@@ -2661,8 +2712,21 @@ struct GeluFusionPattern : OpRewritePattern<linalg::GenericOp> {
     }
 
     Value input1 = isErfScaleTensor(mulErfRhs) ? mulErfLhs : mulErfRhs;
-
-    return input1 == input;
+    if (input1 == input) {
+      // Match the mul op: (x * scale)
+      return true;
+    } else {
+      // Match the mul op: (extf(x) * scale)
+      auto extfInput = isErfScaleTensor(mulErfRhs) ? mulErfLhs : mulErfRhs;
+      auto extfInputGenericOp =
+        extfInput.getDefiningOp<linalg::GenericOp>();
+      if (!extfInputGenericOp || !checkGenericOp<arith::ExtFOp>(extfInputGenericOp)) {
+        return false;
+      } else {
+        Value nestedInput1 = extfInputGenericOp.getInputs()[0];
+        return nestedInput1 == input;
+      }
+    }
   }
 
   bool isTanhScaledTensor(Value &v) const {
@@ -2718,10 +2782,17 @@ struct GeluFusionPattern : OpRewritePattern<linalg::GenericOp> {
       }
       return checkGenericOp<arith::MulFOp>(lhsGenericOp) ? lhsGenericOp
                                                          : rhsGenericOp;
-    } else { // match case : mul (extf (mul (lhs * rhs)) * add (lhs1 *rhs1))
+    } else {
       if (!isExtfAndAddOp(lhsGenericOp, rhsGenericOp)) {
-        return linalg::GenericOp();
+        if (!isAddAndMulOp(lhsGenericOp, rhsGenericOp)) {
+          return linalg::GenericOp();
+        } else {
+          // match case : mul (mul(lhs * rhs) * add (lhs1 *rhs1)), extf already done at before.
+          return checkGenericOp<arith::MulFOp>(lhsGenericOp) ? lhsGenericOp
+                                                             : rhsGenericOp;
+        }
       }
+      // match case : mul (extf (mul (lhs * rhs)) * add (lhs1 *rhs1))
       auto extfGenericOp = checkGenericOp<arith::ExtFOp>(lhsGenericOp)
                                ? lhsGenericOp
                                : rhsGenericOp;
@@ -2788,7 +2859,17 @@ struct GeluFusionPattern : OpRewritePattern<linalg::GenericOp> {
     if (input1 != input) {
       // If the inputs of the mul ops are not the same, we cannot match the gelu
       // pattern.
-      return false;
+      auto extfInput = isTanhScaledTensor(nestedMulInput1) ? nestedMulInput2 : nestedMulInput1;
+      auto extfInputGenericOp =
+        extfInput.getDefiningOp<linalg::GenericOp>();
+      if (!extfInputGenericOp || !checkGenericOp<arith::ExtFOp>(extfInputGenericOp)) {
+        return false;
+      } else {
+        Value nestedInput1 = extfInputGenericOp.getInputs()[0];
+        if (nestedInput1 != input) {
+          return false;
+        }
+      }
     }
 
     // 3. Match add (1 + 0.044715 * pow(x, 2)))
@@ -2970,6 +3051,122 @@ public:
     }
     }
 
+    return success();
+  }
+};
+
+struct TanhOpRewrite : public OpRewritePattern<linalg::GenericOp> {
+  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+
+  // Check if the given value is 1.
+  bool isOneScale(Value &v) const {
+    const float oneScale = 1.0f;
+    return isConstantValue(v, oneScale);
+  }
+
+  bool isTanhMaxScale(Value &v) const {
+    // Check if the value is a constant tensor with the value of 44.3.
+    const float maxScale = 44.3f;
+    return isConstantValue(v, maxScale, true);
+  }
+
+  bool matchFixedTanh(linalg::GenericOp op) const {
+    // match addVV
+    auto addOfTanh = op.getInputs()[0];
+    auto addOfTanhGenericOp =
+        addOfTanh.getDefiningOp<linalg::GenericOp>();
+    if (!addOfTanhGenericOp ||
+        !checkGenericOp<arith::AddFOp>(addOfTanhGenericOp)) {
+      return false;
+    }
+    // match addVV(MulVV, MulVS)
+    auto addLhs = addOfTanhGenericOp.getInputs()[0];
+    auto addRhs = addOfTanhGenericOp.getInputs()[1];
+    auto mulGenericOp = addLhs.getDefiningOp<linalg::GenericOp>();
+    auto mulvsGenericOp = addRhs.getDefiningOp<mk::MulVS>();
+    if (!mulGenericOp || !mulvsGenericOp ||
+        !checkGenericOp<arith::MulFOp>(mulGenericOp)) {
+      return false;
+    }
+    // match mulVV(x, LessThenVS)
+    Value input = mulGenericOp.getInputs()[0];
+    auto lessThenVS = mulGenericOp.getInputs()[1];
+    auto lessThenVSGenericOp = lessThenVS.getDefiningOp<mk::LessThenVS>();
+    if (!lessThenVSGenericOp) {
+      return false;
+    }
+    // match LessThenVS(x, 44.3)
+    Value lessThenVSInput1 = lessThenVSGenericOp.getInput();
+    auto lessThenVSInput2 = lessThenVSGenericOp.getValue();
+    if (!isTanhMaxScale(lessThenVSInput2) ||
+        (lessThenVSInput1 != input)) {
+      return false;
+    }
+    // match mulVS(LessThenVS, 44.3)
+    auto mulvsInput1 = mulvsGenericOp.getInput();
+    auto mulvsInput2 = mulvsGenericOp.getValue();
+    auto lessThenVS2GenericOp = mulvsInput1.getDefiningOp<mk::LessThenVS>();
+    if (!lessThenVS2GenericOp || !isTanhMaxScale(mulvsInput2)) {
+      return false;
+    }
+    // match LessThenVS(LessThenVS, 1.0)
+    auto lessThenVS2Input1 = lessThenVS2GenericOp.getInput();
+    auto lessThenVS2Input2 = lessThenVS2GenericOp.getValue();
+    auto lessThenVS1GenericOp = lessThenVS2Input1.getDefiningOp<mk::LessThenVS>();
+    if ((lessThenVS1GenericOp != lessThenVSGenericOp) || !isOneScale(lessThenVS2Input2)) {
+      return false;
+    }
+    return true;
+  }
+
+public:
+  LogicalResult matchAndRewrite(linalg::GenericOp op,
+                                PatternRewriter &rewriter) const override {
+    auto regionOps = getRegionOps<linalg::GenericOp>(op);
+    if (regionOps.size() != 1 || !isa<math::TanhOp>(regionOps.front()))
+      return failure();
+
+    if (matchFixedTanh(op)) {
+      // If the fixedtanh pattern is matched, we donot need rewrite the op.
+      return failure();
+    }
+
+    auto input = op.getInputs()[0];
+    auto loc = op->getLoc();
+    auto resultType = cast<RankedTensorType>(op->getResultTypes()[0]);
+
+    auto oneVal = rewriter.create<arith::ConstantOp>(
+        loc, rewriter.getOneAttr(resultType.getElementType()));
+    auto maxVal = rewriter.create<arith::ConstantOp>(
+        loc, rewriter.getFloatAttr(resultType.getElementType(), 44.3));
+    auto emptyTensor = rewriter.create<tensor::EmptyOp>(
+        loc, resultType.getShape(), resultType.getElementType());
+
+    auto isInputLessMaxVal =
+        rewriter
+            .create<mk::LessThenVS>(loc, resultType, input, maxVal, emptyTensor)
+            ->getResult(0);
+
+    auto isInputGreaterMaxVal =
+        rewriter
+            .create<mk::LessThenVS>(loc, resultType, isInputLessMaxVal, oneVal, emptyTensor)
+            ->getResult(0);
+
+    auto inputMulMask = buildLinalgElementwise<arith::MulFOp>(
+        rewriter, loc, resultType, ValueRange{input, isInputLessMaxVal});
+
+    auto maxTensorWithMask =
+        rewriter
+            .create<mk::MulVS>(loc, resultType, isInputGreaterMaxVal, maxVal, emptyTensor)
+            ->getResult(0);
+
+    auto inputMulMaskAddMax = buildLinalgElementwise<arith::AddFOp>(
+        rewriter, loc, resultType, ValueRange{inputMulMask, maxTensorWithMask});
+
+    auto tanhResult = buildLinalgElementwise<math::TanhOp>(
+        rewriter, loc, resultType, ValueRange{inputMulMaskAddMax});
+
+    rewriter.replaceOp(op, tanhResult);
     return success();
   }
 };
@@ -3756,11 +3953,75 @@ struct DenseConstantToFillPattern
     auto splatValue = denseAttr.getSplatValue<Attribute>();
     Value scalar = rewriter.create<arith::ConstantOp>(
         loc, elemType, cast<TypedAttr>(splatValue));
-    Value empty =
-        rewriter.create<tensor::EmptyOp>(loc, resultType.getShape(), elemType);
+    Value empty = rewriter.create<tensor::EmptyOp>(
+        loc, resultType.getShape(), elemType);
     Value fill =
         rewriter.create<linalg::FillOp>(loc, scalar, empty).getResult(0);
     rewriter.replaceOp(op, fill);
+    return success();
+  }
+};
+
+struct DenseConstantToInsertPattern
+    : OpConversionPattern<arith::ConstantOp> {
+  using OpConversionPattern::OpConversionPattern;
+
+  LogicalResult matchAndRewrite(arith::ConstantOp op, OpAdaptor /*adaptor*/,
+                                ConversionPatternRewriter &rewriter) const override {
+    auto tensorType = dyn_cast<RankedTensorType>(op.getType());
+    if (!tensorType)
+      return failure();
+
+    auto denseAttr = dyn_cast<DenseElementsAttr>(op.getValue());
+    if (!denseAttr)
+      return failure();
+
+    if (denseAttr.isSplat())
+      return failure();
+
+    Type elemType = tensorType.getElementType();
+    if (!isa<IntegerType, IndexType, FloatType>(elemType))
+      return failure();
+
+    if (!tensorType.hasStaticShape())
+      return failure();
+
+    Location loc = op.getLoc();
+
+    Value result = rewriter.create<tensor::EmptyOp>(
+        loc, tensorType.getShape(), elemType);
+
+    SmallVector<int64_t> shape(tensorType.getShape());
+    int64_t rank = tensorType.getRank();
+
+    int64_t linear = 0;
+    for (Attribute attr : denseAttr.getValues<Attribute>()) {
+      SmallVector<Value> indices(rank);
+
+      int64_t tmp = linear;
+      for (int64_t d = rank - 1; d >= 0; --d) {
+        int64_t idx = tmp % shape[d];
+        tmp /= shape[d];
+        indices[d] = rewriter.create<arith::ConstantIndexOp>(loc, idx);
+      }
+
+      Value scalar;
+      if (isa<IndexType>(elemType)) {
+        auto intAttr = cast<IntegerAttr>(attr);
+        scalar = rewriter.create<arith::ConstantIndexOp>(
+            loc, intAttr.getInt());
+      } else {
+        scalar = rewriter.create<arith::ConstantOp>(
+            loc, elemType, cast<TypedAttr>(attr));
+      }
+
+      result = rewriter.create<tensor::InsertOp>(
+          loc, scalar, result, indices);
+
+      ++linear;
+    }
+
+    rewriter.replaceOp(op, result);
     return success();
   }
 };
@@ -3776,15 +4037,16 @@ void mlir::triton::populateLinalgToMKPreProcessPatterns(
                 ArgMinMaxFusionPattern<mk::ArgMinOp>,
                 ArgMinMaxFusionPattern<mk::ArgMaxOp>,
                 AtomicRMWOpRewrite,
-                AtomicCASOpRewrite>(
+                AtomicCASOpRewrite,
+                TanhOpRewrite>(
       patterns.getContext());
   // clang-format on
 }
 
 void mlir::triton::populateLinalgToMKTypeConversionPatterns(
-    RewritePatternSet &patterns, bool precisionPriority) {
+    RewritePatternSet &patterns, int precisionMode) {
   patterns.add<CastElementwiseOpIOToFloatPattern, CastReduceOpIOToFloatPattern>(
-      patterns.getContext(), precisionPriority /* precisionPriority */);
+      patterns.getContext(), precisionMode /* precisionMode */);
   patterns.add<CannonicalizeRedudantTypeConversion>(patterns.getContext());
   patterns
       .add<I1ExtSIOpRewrite, I1ExtUIOpRewrite, I1ToF32Rewrite, FP32ToI1Rewrite>(
@@ -3796,7 +4058,7 @@ void mlir::triton::populateLinalgToMKTypeConversionPatterns(
 }
 
 void mlir::triton::populateLinalgToMKCanonicalizationPatterns(
-    RewritePatternSet &patterns, bool precisionPriority) {
+    RewritePatternSet &patterns, int precisionMode) {
   // clang-format off
   patterns.add<LinalgReduceToMKReduceConversion, // Exec after NormalizeReduceInitToIdentityPattern and si-to-fp
                 BroadcastOpRewrite,
@@ -3812,7 +4074,7 @@ void mlir::triton::populateLinalgToMKCanonicalizationPatterns(
       patterns.getContext());
   // clang-format on
 
-  if (!precisionPriority)
+  if (normalizePrecisionMode(precisionMode) <= 1)
     patterns.add<ArithRemFRewrite, DivFloatOpRewrite, PowFOpRewrite>(
         patterns.getContext());
   else
@@ -3820,9 +4082,9 @@ void mlir::triton::populateLinalgToMKCanonicalizationPatterns(
 }
 
 void mlir::triton::populateLinalgToMKShapeCanonicalizationPatterns(
-    RewritePatternSet &patterns, bool precisionPriority) {
+    RewritePatternSet &patterns, int precisionMode) {
   patterns.add<BoolOpShapeCanonicalizePattern>(
-      patterns.getContext(), precisionPriority /* precisionPriority */);
+      patterns.getContext(), precisionMode /* precisionMode */);
 }
 
 void mlir::triton::populateLinalgToMKConversionPatterns(
@@ -3831,4 +4093,5 @@ void mlir::triton::populateLinalgToMKConversionPatterns(
   // After NormalizeReduceInitToIdentityPattern and si-to-fp
   patterns.add<ReduceOpToElementwiseOpConverter>(patterns.getContext());
   patterns.add<DenseConstantToFillPattern>(patterns.getContext());
+  patterns.add<DenseConstantToInsertPattern>(patterns.getContext());
 }

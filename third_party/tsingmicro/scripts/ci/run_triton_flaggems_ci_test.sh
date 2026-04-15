@@ -26,7 +26,7 @@ set -e
 ##     param3: skip_run,     set 1-skip run ci test,    set 0-run ci test,     default 0.                               ##
 ##     param4: test_set,     set test set name, default 'ci_ops'.                                                       ##
 ##     param5: device_count, set device count number,   default 1.                                                      ##
-##     ##param: precision_priority, set 1-triton compiler use high precision mode for special ops, default 1.           ##
+##     ##param: precision_mode, set 1-triton compiler use high precision mode for special ops, default 2.              ##
 ##     param6: quick_mode,   set 1-quick mode to run flaggems, set 0-normal mode, default 0.                            ##
 ##     param7: skip_device,  set devices that need to be skipped, when they are unavailable, default [].                ##
 ##                                                                                                                      ##
@@ -47,11 +47,12 @@ device_count=1
 quick_mode=0
 skip_device=
 
-precision_priority=1
-tx8_depends_name=tx8_depends_dev_20260309_173649
-torch_txda_name=torch_txda+txops-20251230-03541ed8+71a1e5a
-txda_skip_ops="repeat_interleave.self_int,pad,to.dtype,uniform_,sort.values_stable,contiguous,resolve_conj"
-txda_fallback_cpu_ops="random_,quantile,_local_scalar_dense,arange,unfold,index,le,all,ge,pad,to,gather_backward,zero_,view_as_real,resolve_neg,embedding_backward,sort,repeat_interleave,rsub,hstack,vstack,min,uniform_,abs,ne,eq,mul,bitwise_and,masked_select,max,ceil,div,gt,lt,sum,scatter,where,resolve_conj,isclose,isfinite,tile,equal,gather,contiguous"
+precision_mode=2
+tx8_depends_name=tx8_depends_dev_20260507_104051
+torch_txda_name=torch_txda-0.1.0+20260416.b8f53e8a-cp310-cp310-linux_x86_64
+txops_name=txops-0.1.0+20260413.f0fa21a4-py3-none-any
+txda_skip_ops="repeat_interleave.self_int,pad,uniform_,sort.values_stable,resolve_conj"
+txda_fallback_cpu_ops="random_,quantile,_local_scalar_dense,arange,unfold,index,le,all,ge,pad,to,gather_backward,zero_,view_as_real,resolve_neg,embedding_backward,sort,repeat_interleave,rsub,hstack,vstack,min,uniform_,abs,ne,eq,mul,bitwise_and,masked_select,max,ceil,div,gt,lt,sum,scatter,where,resolve_conj,isclose,isfinite,tile,equal,gather,_index_put_impl_,sub,to_dtype,isneginf,tril,count_nonzero,exp,exp_out,exp.out,fill_,flip,diag,view_as_complex,cat,log_sigmoid,kron,add"
 
 if [ $# -ge 1 ]; then
 	skip_install=$1
@@ -82,9 +83,10 @@ echo "test_set:"$test_set
 echo "device_count:"$device_count
 echo "quick_mode:"$quick_mode
 echo "skip_device:"$skip_device
-echo "precision_priority:"$precision_priority
+echo "precision_mode:"$precision_mode
 echo "tx8_depends_name:"$tx8_depends_name
 echo "torch_txda_name:"$torch_txda_name
+echo "txops_name:"$txops_name
 echo "txda_skip_ops:"$txda_skip_ops
 echo "txda_fallback_cpu_ops:"$txda_fallback_cpu_ops
 ##1.下载依赖(triton业务负责)
@@ -102,13 +104,14 @@ if [ ! -d "./llvm-a66376b0-ubuntu-x64" ]; then
 fi
 
 if [ ! -d "./llvm-a66376b0-ubuntu-x64" ]; then
-	wget https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/triton/tools/llvm-a66376b0-ubuntu-x64.tar.gz
+	wget -P $TRITON_DEPENDS_SRC https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/triton/tools/llvm-a66376b0-ubuntu-x64.tar.gz
 	if [ $? -eq 0 ]; then
 		echo "Download llvm complete!"
 	else
 		echo "Download llvm fail!!!"
 		exit -1
 	fi
+	cp $TRITON_DEPENDS_SRC/llvm-a66376b0-ubuntu-x64.tar.gz ./
 	tar -xzvf llvm-a66376b0-ubuntu-x64.tar.gz
 	rm llvm-a66376b0-ubuntu-x64.tar.gz
 fi
@@ -129,13 +132,14 @@ if [ ! -d "./offline_pkgs" ]; then
 fi
 
 if [ ! -d "./offline_pkgs" ]; then
-	wget https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/triton/offline_pkgs/offline_pkgs_v5.3.0.tar.gz
+	wget -P $TRITON_DEPENDS_SRC https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/triton/offline_pkgs/offline_pkgs_v5.3.0.tar.gz
 	if [ $? -eq 0 ]; then
 		echo "Download offline package complete!"
 	else
 		echo "Download offline package fail!!!"
 		exit -1
 	fi
+	cp $TRITON_DEPENDS_SRC/offline_pkgs_v5.3.0.tar.gz ./
 	tar -xzvf offline_pkgs_v5.3.0.tar.gz
 	rm offline_pkgs_v5.3.0.tar.gz
 fi
@@ -147,6 +151,16 @@ fi
 
 ###download tx8_deps(变化频率较高)
 if [ ! -e $tx8_depends_name.tar.gz ]; then
+	if [ ! -e $TRITON_DEPENDS_SRC/$tx8_depends_name.tar.gz ]; then
+		echo "warning：$TRITON_DEPENDS_SRC/$tx8_depends_name.tar.gz not exist， use wget to download, maybe very slowly!"
+		wget -P $TRITON_DEPENDS_SRC https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/triton/tx8_depends/$tx8_depends_name.tar.gz
+		if [ $? -eq 0 ]; then
+			echo "Download tx8_deps complete!"
+		else
+			echo "Download tx8_dpes fail!!!"
+			exit -1
+		fi
+	fi
 	if [ -e $TRITON_DEPENDS_SRC/$tx8_depends_name.tar.gz ]; then
 		cp $TRITON_DEPENDS_SRC/$tx8_depends_name.tar.gz ./
 		if [ -d "./tx8_deps" ]; then
@@ -155,62 +169,56 @@ if [ ! -e $tx8_depends_name.tar.gz ]; then
 		tar -xzvf $tx8_depends_name.tar.gz
 		echo "cp $TRITON_DEPENDS_SRC/$tx8_depends_name.tar.gz complete!"
 	else
-		echo "warning：$TRITON_DEPENDS_SRC/$tx8_depends_name.tar.gz not exist， use wget to download, maybe very slowly!"
-	fi
-fi
-
-if [ ! -e $tx8_depends_name.tar.gz ]; then
-	if [ -d "./tx8_deps" ]; then
-		rm -rf tx8_deps
-	fi
-
-	wget https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/triton/tx8_depends/$tx8_depends_name.tar.gz
-	if [ $? -eq 0 ]; then
-		echo "Download tx8_deps complete!"
-	else
-		echo "Download tx8_dpes fail!!!"
+		echo "fail: not find tx8_deps!!!"
 		exit -1
 	fi
-	tar -xzvf $tx8_depends_name.tar.gz
-fi
-
-if [ ! -d "./tx8_deps" ]; then
-	echo "fail: not find tx8_deps!!!"
-	exit -1
-fi
-
-###download torch_txda(变化频率较高)
-if [ ! -e $torch_txda_name.tar.gz ]; then
-	if [ -e $TRITON_DEPENDS_SRC/$torch_txda_name.tar.gz ]; then
-		cp $TRITON_DEPENDS_SRC/$torch_txda_name.tar.gz ./
-		if [ -d "./pack" ]; then
-			rm -rf pack
-		fi
-		tar -xzvf $torch_txda_name.tar.gz
-		echo "cp $TRITON_DEPENDS_SRC/$torch_txda_name.tar.gz complete!"
-	else
-		echo "warning：$TRITON_DEPENDS_SRC/$torch_txda_name.tar.gz not exist， use wget to download, maybe very slowly!"
-	fi
-fi
-
-if [ ! -e $torch_txda_name.tar.gz ]; then
-	if [ -d "./pack" ]; then
-		rm -rf pack
-	fi
-
-	wget https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/torch_txda/$torch_txda_name.tar.gz
-	if [ $? -eq 0 ]; then
-		echo "Download torch_txda complete!"
-	else
-		echo "Download torch_txda fail!!!"
-		exit -1
-	fi
-	tar -xzvf $torch_txda_name.tar.gz
 fi
 
 if [ ! -d "./pack" ]; then
-	echo "fail: not find torch_txda pack!!!"
-	exit -1
+	mkdir pack
+fi
+
+###download torch_txda(变化频率较高)
+if [ ! -e ./pack/$torch_txda_name.whl ]; then
+	if [ ! -e $TRITON_DEPENDS_SRC/$torch_txda_name.whl ]; then
+		echo "warning：$TRITON_DEPENDS_SRC/$torch_txda_name.tar.gz not exist， use wget to download, maybe very slowly!"
+		wget -P $TRITON_DEPENDS_SRC https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/torch_txda/$torch_txda_name.whl
+		if [ $? -eq 0 ]; then
+			echo "Download torch_txda complete!"
+		else
+			echo "Download torch_txda fail!!!"
+			exit -1
+		fi
+	fi
+
+	if [ -e $TRITON_DEPENDS_SRC/$torch_txda_name.whl ]; then
+		cp $TRITON_DEPENDS_SRC/$torch_txda_name.whl ./pack
+		echo "cp $TRITON_DEPENDS_SRC/$torch_txda_name.whl complete!"
+	else
+		echo "fail: not find torch_txda pack!!!"
+		exit -1
+	fi
+fi
+###download txops
+if [ ! -e ./pack/$txops_name.whl ]; then
+	if [ ! -e $TRITON_DEPENDS_SRC/$txops_name.whl ]; then
+		echo "warning：$TRITON_DEPENDS_SRC/$txops_name.tar.gz not exist， use wget to download, maybe very slowly!"
+		wget -P $TRITON_DEPENDS_SRC https://toolchain-jfrog.tsingmicro.xyz:443/artifactory/tx8-generic-dev/torch_txda/$txops_name.whl
+		if [ $? -eq 0 ]; then
+			echo "Download txops complete!"
+		else
+			echo "Download txops fail!!!"
+			exit -1
+		fi
+	fi
+
+	if [ -e $TRITON_DEPENDS_SRC/$txops_name.whl ]; then
+		cp $TRITON_DEPENDS_SRC/$txops_name.whl ./pack
+		echo "cp $TRITON_DEPENDS_SRC/$txops_name.whl complete!"
+	else
+		echo "fail: not find txops pack!!!"
+		exit -1
+	fi
 fi
 
 ##2.安装依赖(triton业务负责)
@@ -245,7 +253,7 @@ if [ $skip_install -ne 1 ]; then
 	export https_proxy=$PROXY http_proxy=$PROXY all_proxy=$PROXY
 	apt update
 	apt install -y lld
-	apt install ccache
+	apt install -y ccache
 	pip install loguru
 	pip install scipy
 	unset https_proxy
@@ -261,6 +269,7 @@ fi
 
 ##3.编译triton(triton业务负责)
 if [ $skip_build -ne 1 ]; then
+	rm -rf triton/python/build
 	bash ./third_party/tsingmicro/scripts/build_tsingmicro.sh
 	if [ $? -eq 0 ]; then
 		echo "Build triton complete!"
@@ -280,11 +289,13 @@ export PYTHONPATH=$LLVM/python_packages/mlir_core:$PYTHONPATH
 export LD_LIBRARY_PATH=$TX8_DEPS_ROOT/lib:$LD_LIBRARY_PATH
 #export TRITON_DUMP_PATH=$TRITON_WORKSPACE/dump
 export TRITON_ALWAYS_COMPILE=1
+#autotune不走do_bench函数,每个config kernel只会运行一次,减少ci运行耗时
+export TRITON_QUICK_MODE=1
 export TRITON_PRINT_AUTOTUNING=1
 #测试任务相关环境变量
 export JSON_FILE_PATH=$project_dir/flaggems/tests
 #export TX8_DEVICES_COUNT=$device_count
-export PRECISION_PRIORITY=$precision_priority
+export PRECISION_MODE=$precision_mode
 export TRITON_ALLOW_NON_CONSTEXPR_GLOBALS=1
 export TXDA_SKIP_OPS=$txda_skip_ops
 export TXDA_FALLBACK_CPU_OPS=$txda_fallback_cpu_ops
@@ -298,7 +309,7 @@ echo "LD_LIBRARY_PATH="$LD_LIBRARY_PATH
 echo "TRITON_ALWAYS_COMPILE="$TRITON_ALWAYS_COMPILE
 echo "JSON_FILE_PATH="$JSON_FILE_PATH
 #echo "TX8_DEVICES_COUNT="$TX8_DEVICES_COUNT
-echo "PRECISION_PRIORITY="$PRECISION_PRIORITY
+echo "PRECISION_MODE="$PRECISION_MODE
 echo "TRITON_ALLOW_NON_CONSTEXPR_GLOBALS="$TRITON_ALLOW_NON_CONSTEXPR_GLOBALS
 echo "TXDA_SKIP_OPS="$TXDA_SKIP_OPS
 echo "TXDA_FALLBACK_CPU_OPS="$TXDA_FALLBACK_CPU_OPS
@@ -309,6 +320,14 @@ if [ $skip_run -ne 1 ]; then
 	fi
 
 	cd ..
+	rm -rf ~/.triton/
+	rm -rf ~/.flaggems/
+	rm -rf triton/dump/
+	rm -rf /tmp/triton_*
+	rm -rf /tmp/flaggems_*
+	rm -rf log/
+	rm -rf result.json
+	rm -rf tsingmicro_launch.log
 	if [ $quick_mode -eq 1 ]; then
 		python ./flaggems/tests/test_flag_gems_ci.py --test_set $test_set --device_count $device_count --skip_device $skip_device --quick
 	else

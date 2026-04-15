@@ -8,13 +8,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __BF16_FP16(uint64_t *src, uint64_t *dst, uint32_t elem_count) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmConvert *cmd = g_intrinsic()->convert_pointer;
-  TsmConvertInstr inst = {I_CGRA,
+  RcsConvert *cmd = g_intrinsic()->convert_pointer;
+  RcsConvertInstr inst = {I_CGRA,
                           {
                               0,
                           },
@@ -25,7 +25,7 @@ void __BF16_FP16(uint64_t *src, uint64_t *dst, uint32_t elem_count) {
   cmd->BF16_FP16(&inst, (uint64_t)src, (uint64_t)dst, elem_count);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

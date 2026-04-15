@@ -9,14 +9,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __RsqrtVV(uint64_t *src, uint64_t *dst, uint32_t elem_count,
                uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmArith *cmd = g_intrinsic()->arith_pointer;
-  TsmArithInstr inst = {I_CGRA,
+  RcsArith *cmd = g_intrinsic()->arith_pointer;
+  RcsArithInstr inst = {I_CGRA,
                         {
                             0,
                         },
@@ -28,7 +28,7 @@ void __RsqrtVV(uint64_t *src, uint64_t *dst, uint32_t elem_count,
                (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

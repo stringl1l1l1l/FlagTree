@@ -1,11 +1,74 @@
 #!/bin/bash
-
-declare -A PROJECT_INFO
-
 set -e
 # set -x
 
-# # 定义一个函数，用于克隆 Git 仓库并切换到指定分支或指定 commit
+# 显示帮助信息
+show_help() {
+    echo "usage: $0 mode [tx81fw url] [tx_profiler url] [tx8-yoc-rt-thread-smp url]"
+    echo "support mode:"
+    echo "  build_flagtree_tx8_deps"
+    echo "  build_tx8_deps"
+    echo "  build_dev"
+    echo "  now build_tx8_deps=build_flagtree_tx8_deps, borth not include profile module, build_dev include profile module."
+    echo ""
+    echo "tx81fw url:"
+    echo "  eg: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx81fw_202512041135_b731cf.tar.gz"
+    echo "  default: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx81fw_202512041135_b731cf.tar.gz"
+    echo "  ..."
+    echo ""
+    echo "tx_profiler url:"
+    echo "  eg: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81-profiling/master/profiling_tool_v5.5.0_release_2025-1124_.tar.gz"
+    echo "  default: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81-profiling/master/profiling_tool_v5.5.0_release_2025-1124_.tar.gz"
+    echo "  ..."
+    echo ""
+    echo "tx8-yoc-rt-thread-smp url:"
+    echo "  eg: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx8-yoc-rt-thread-smp-202603031631-88bfb9.tar.gz"
+    echo "  default: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx8-yoc-rt-thread-smp-202603031631-88bfb9.tar.gz"
+    echo "  ..."
+    echo ""
+    echo "example: bash triton/third_party/tsingmicro/scripts/build_tx8_deps.sh build_dev http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx81fw_202602261758_b72af3.tar.gz http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81-profiling/master/profiling_tool_v5.6.0_release_2026-0228_.tar.gz http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx8-yoc-rt-thread-smp-202603031631-88bfb9.tar.gz"
+}
+
+# 检查参数数量
+if [ $# -lt 1 ]; then
+    show_help
+    exit 1
+fi
+
+MODE=$1
+tx81fw=http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx81fw_202512041135_b731cf.tar.gz
+if [ $# -ge 2 ]; then
+	tx81fw=$2
+fi
+echo "tx81fw: "$tx81fw
+
+profile_url=http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81-profiling/master/profiling_tool_v5.5.0_release_2025-1124_.tar.gz
+if [ $# -ge 3 ]; then
+	profile_url=$3
+fi
+echo "profile_url: "$profile_url
+
+tx8_yoc_rt_thread_smp=http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx8-yoc-rt-thread-smp-202603031631-88bfb9.tar.gz
+if [ $# -ge 4 ]; then
+	tx8_yoc_rt_thread_smp=$4
+fi
+echo "tx8_yoc_rt_thread_smp: "$tx8_yoc_rt_thread_smp
+
+script_path=$(realpath "$0")
+script_dir=$(dirname "$script_path")
+project_dir=$(realpath "$script_dir/../../..")
+
+if [ -z "${WORKSPACE+x}" ]; then
+    WORKSPACE=$(realpath "$project_dir/..")
+fi
+
+# 配置文件路径
+CONFIG_FILE="$script_dir/copy_config.conf"
+
+
+declare -A PROJECT_INFO
+
+# 定义一个函数，用于克隆 Git 仓库并切换到指定分支或指定 commit
 clone_and_checkout() {
     local git_url="$1"
     local base_dir="$2"
@@ -134,53 +197,6 @@ download_and_extract() {
     fi
 }
 
-script_path=$(realpath "$0")
-script_dir=$(dirname "$script_path")
-project_dir=$(realpath "$script_dir/../../..")
-
-if [ -z "${WORKSPACE+x}" ]; then
-    WORKSPACE=$(realpath "$project_dir/..")
-fi
-
-build_tx8_deps=OFF
-build_dev=OFF
-build_flagtree_tx8_deps=OFF
-
-# 配置文件路径
-CONFIG_FILE="$script_dir/copy_config.conf"
-
-# 显示帮助信息
-show_help() {
-    echo "usage: $0 mode [tx81fw url] [tx_profiler url] [tx8-yoc-rt-thread-smp url]"
-    echo "support mode:"
-    echo "  build_flagtree_tx8_deps"
-    echo "  build_tx8_deps"
-    echo "  build_dev"
-    echo ""
-    echo "tx81fw url:"
-    echo "  eg: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx81fw_202512041135_b731cf.tar.gz"
-    echo "  default: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx81fw_202512041135_b731cf.tar.gz"
-    echo "  ..."
-    echo ""
-    echo "tx_profiler url:"
-    echo "  eg: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81-profiling/master/profiling_tool_v5.5.0_release_2025-1124_.tar.gz"
-    echo "  default: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81-profiling/master/profiling_tool_v5.5.0_release_2025-1124_.tar.gz"
-    echo "  ..."
-    echo ""
-    echo "tx8-yoc-rt-thread-smp url:"
-    echo "  eg: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx8-yoc-rt-thread-smp-202603031631-88bfb9.tar.gz"
-    echo "  default: http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx8-yoc-rt-thread-smp-202603031631-88bfb9.tar.gz"
-    echo "  ..."
-    echo ""
-    echo "example: bash triton/third_party/tsingmicro/scripts/build_tx8_deps.sh build_dev http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx81fw_202602261758_b72af3.tar.gz http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81-profiling/master/profiling_tool_v5.6.0_release_2026-0228_.tar.gz http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx8-yoc-rt-thread-smp-202603031631-88bfb9.tar.gz"
-}
-
-# 检查参数数量
-if [ $# -lt 1 ]; then
-    show_help
-    exit 1
-fi
-
 # 收集所有适用于当前模式的路径
 declare -A CONFIG_BLOCKS
 declare -A CONFIG_ITEMS
@@ -194,14 +210,14 @@ load_copy_cfg() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
         [[ -z "$line" ]] && continue
-
+        
         # 解析块定义
         if [[ "$line" =~ ^\[([^:]+):([^]]+)\] ]]; then
             current_block="${BASH_REMATCH[1]}"
             CONFIG_BLOCKS["$current_block"]="${BASH_REMATCH[2]}"
             continue
         fi
-
+        
         # 存储配置项
         if [[ -n "$current_block" ]]; then
             CONFIG_ITEMS["$current_block"]+="$line"$'\n'
@@ -231,16 +247,16 @@ copy_files() {
             # 处理块内的每个配置项
             while IFS= read -r line; do
                 [[ -z "$line" ]] && continue
-
+                
                 # 解析配置行
                 if [[ "$line" =~ ^([^:]+):([^,]+),?(.*)$ ]]; then
                     local copy_type="${BASH_REMATCH[1]}"
                     local source_pattern="$WORKSPACE/${BASH_REMATCH[2]}"
                     local target_subdir="${BASH_REMATCH[3]:-.}"
-
+                    
                     local full_target="$destination/${target_subdir}"
                     [[ "$target_subdir" == "." ]] && full_target="$destination"
-
+                    
                     mkdir -p "$full_target"
                     echo "copy [$copy_type] '$source_pattern' to '$full_target'"
                     if [[ "$copy_type" == "dir" ]]; then
@@ -257,18 +273,7 @@ copy_files() {
     return 0
 }
 
-MODE=$1
-tx81fw=http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81fw/tx81fw_202512041135_b731cf.tar.gz
-if [ $# -ge 2 ]; then
-	tx81fw=$2
-fi
-echo "tx81fw: "$tx81fw
 
-profile_url=http://172.50.1.66:8082/artifactory/tx8-generic-dev/tx81-profiling/master/profiling_tool_v5.5.0_release_2025-1124_.tar.gz
-if [ $# -ge 3 ]; then
-	profile_url=$3
-fi
-echo "profile_url: "$profile_url
 if [ "x$MODE" == "xbuild_flagtree_tx8_deps" ] || [ "x$MODE" == "xbuild_tx8_deps" ] || [ "x$MODE" == "xbuild_dev" ]; then
     download_dir=$WORKSPACE/download
     ########################################################################################
@@ -277,16 +282,15 @@ if [ "x$MODE" == "xbuild_flagtree_tx8_deps" ] || [ "x$MODE" == "xbuild_tx8_deps"
         "$tx8fw_dir" "$download_dir" "tx8fw"
 
     ########################################################################################
-    xuantie_sdk_dir=$download_dir/tx8fw-xuantie-sdk
-    clone_and_checkout "git@gitlab.tsingmicro.com:tx8_developers/tx8fw-xuantie-sdk.git" \
-        "$download_dir" "commit" "9f96c2b235ca15e90907205b6738065f8a8edd65" "tx8fw-xuantie-sdk"
-
-    # instr_tx81_lib=$WORKSPACE/download/libinstr_tx81.a
-    xuantie_dir=$xuantie_sdk_dir/Xuantie-900-gcc-elf-newlib-x86_64-V2.10.2
-    if [ ! -d $xuantie_dir ]; then
-        echo "error can't find:$xuantie_dir"
+    xuantie_dir=$tx8fw_dir/rcs1fw-rtt/tool/rcsfw-xuantie-sdk
+    if [ ! -d $tx8fw_dir ]; then
+        echo "error can't find:$tx8fw_dir"
         exit
     fi
+
+    pushd $xuantie_dir
+        bash setup.sh -t all
+    popd
 
     ########################################################################################
     # doc
@@ -303,6 +307,12 @@ if [ "x$MODE" == "xbuild_flagtree_tx8_deps" ] || [ "x$MODE" == "xbuild_tx8_deps"
     tx_profiler_dir=$download_dir/tx_profiler
     download_and_extract $profile_url \
         "$tx_profiler_dir" "$download_dir" "tx_profiler"
+
+    ########################################################################################
+	
+    tx8_yoc_rt_thread_smp_dir=$download_dir/tx8-yoc-rt-thread-smp
+    download_and_extract $tx8_yoc_rt_thread_smp \
+        "$tx8_yoc_rt_thread_smp_dir" "$download_dir" "tx8-yoc-rt-thread-smp"
 
     ########################################################################################
     tx8_depends_dir=$WORKSPACE/tx8_deps
@@ -323,14 +333,19 @@ if [ "x$MODE" == "xbuild_flagtree_tx8_deps" ] || [ "x$MODE" == "xbuild_tx8_deps"
             tar_flag="dev"
         fi
 
-        pkg_file=download/tx8_depends_${tar_flag}_${current_time}.tar.gz
-        if [ ! -d download ]; then
-            mkdir download
-        fi
+        pkg_file=$WORKSPACE/tx8_depends_${tar_flag}_${current_time}.tar.gz
+        #if [ ! -d download ]; then
+        #    mkdir download
+        #fi
         if [ -f $pkg_file ]; then
             rm -f $pkg_file
         fi
         tar -zcf $pkg_file tx8_deps
+		rm -rf $download_dir
+		rm -rf $tx8_depends_dir
+		echo "========================================================================================================================="
+		echo "tx8_deps generated at: "$pkg_file
+		echo "========================================================================================================================="
     popd
 else
     echo abc

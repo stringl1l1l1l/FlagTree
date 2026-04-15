@@ -9,14 +9,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __Transpose(uint64_t *src, uint64_t *dst, int32_t *src_shape,
                  int32_t *dst_shape, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmDataMove *cmd = g_intrinsic()->datamove_pointer;
-  TsmDataMoveInstr inst = {I_CGRA,
+  RcsDataMove *cmd = g_intrinsic()->datamove_pointer;
+  RcsDataMoveInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -30,7 +30,7 @@ void __Transpose(uint64_t *src, uint64_t *dst, int32_t *src_shape,
                  (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __Memcpy(uint64_t *src, uint64_t *dst, uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
@@ -55,8 +55,8 @@ void __Memcpy(uint64_t *src, uint64_t *dst, uint32_t elem_count, uint16_t fmt) {
   }
 
   // Create command buffer.
-  TsmDataMove *cmd = g_intrinsic()->datamove_pointer;
-  TsmDataMoveInstr inst = {I_CGRA,
+  RcsDataMove *cmd = g_intrinsic()->datamove_pointer;
+  RcsDataMoveInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -71,6 +71,7 @@ void __Memcpy(uint64_t *src, uint64_t *dst, uint32_t elem_count, uint16_t fmt) {
                      &src_si, &dst_si);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
-  TsmWaitfinish();
+  RcsExecute(&inst);
+  // RcsWaitfinish();
+  SYNCHRONOUS_INTRINSIC_SWITCH;
 }

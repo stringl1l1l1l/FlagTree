@@ -251,6 +251,223 @@ struct BinaryScalarAndTensorOpFusion
   }
 };
 
+struct LinalgFPToSIAndSIToFPCanonicalization
+    : public OpRewritePattern<linalg::GenericOp> {
+  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::GenericOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isaElemwiseSingleUnaryOpInterface(op)) {
+      return failure();
+    }
+    auto regionOps = mlir::triton::getRegionOps<linalg::GenericOp>(op);
+    if (!isa<arith::SIToFPOp>(regionOps.front())) {
+      return failure();
+    }
+
+    assert(regionOps.size() == 1 &&
+           "Expected a single operation in the linalg.generic region");
+
+    auto input = op.getInputs()[0];
+    auto prevOp = input.getDefiningOp<linalg::GenericOp>();
+    if (!prevOp) {
+      return failure();
+    }
+    auto prevRegionOps = mlir::triton::getRegionOps<linalg::GenericOp>(prevOp);
+
+    if (prevRegionOps.empty() || !isa<arith::FPToSIOp>(prevRegionOps.front())) {
+      return failure();
+    }
+
+    if (op->getResultTypes()[0] == prevOp->getOperandTypes()[0]) {
+      rewriter.replaceOp(op, prevOp->getOperand(0));
+      return success();
+    }
+
+    if (dyn_cast<RankedTensorType>(op->getResultTypes()[0])
+            .getElementTypeBitWidth() >
+        dyn_cast<RankedTensorType>(prevOp->getOperandTypes()[0])
+            .getElementTypeBitWidth()) {
+      auto res = rewriter
+                     .create<linalg::GenericOp>(
+                         op->getLoc(), op.getResultTypes(),
+                         prevOp->getOperand(0), op.getOutputs(),
+                         op.getIndexingMapsArray(), op.getIteratorTypesArray(),
+                         [](OpBuilder &b, Location loc, ValueRange args) {
+                           auto extf = b.create<arith::ExtFOp>(
+                               loc, args.back().getType(), args.front());
+                           b.create<linalg::YieldOp>(loc, extf.getResult());
+                         })
+                     .getResult(0);
+      rewriter.replaceOp(op, res);
+      return success();
+    }
+
+    auto res = rewriter
+                   .create<linalg::GenericOp>(
+                       op->getLoc(), op.getResultTypes(), prevOp->getOperand(0),
+                       op.getOutputs(), op.getIndexingMapsArray(),
+                       op.getIteratorTypesArray(),
+                       [](OpBuilder &b, Location loc, ValueRange args) {
+                         auto truncf = b.create<arith::TruncFOp>(
+                             loc, args.back().getType(), args.front());
+                         b.create<linalg::YieldOp>(loc, truncf.getResult());
+                       })
+                   .getResult(0);
+    rewriter.replaceOp(op, res);
+    return success();
+  }
+};
+
+struct LinalgExtSIAndSIToFPFusion : public OpRewritePattern<linalg::GenericOp> {
+  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::GenericOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isaElemwiseSingleUnaryOpInterface(op)) {
+      return failure();
+    }
+    auto regionOps = mlir::triton::getRegionOps<linalg::GenericOp>(op);
+    if (!isa<arith::SIToFPOp>(regionOps.front())) {
+      return failure();
+    }
+
+    assert(regionOps.size() == 1 &&
+           "Expected a single operation in the linalg.generic region");
+
+    auto input = op.getInputs()[0];
+    auto prevOp = input.getDefiningOp<linalg::GenericOp>();
+    if (!prevOp) {
+      return failure();
+    }
+    auto prevRegionOps = mlir::triton::getRegionOps<linalg::GenericOp>(prevOp);
+
+    if (prevRegionOps.empty() || !isa<arith::ExtSIOp>(prevRegionOps.front())) {
+      return failure();
+    }
+
+    auto newOp = rewriter.create<linalg::GenericOp>(
+        op->getLoc(), op.getResultTypes(), prevOp->getOperand(0),
+        op.getOutputs()[0], op.getIndexingMapsArray(),
+        op.getIteratorTypesArray(),
+        [](OpBuilder &b, Location loc, ValueRange args) {
+          auto siToFp = b.create<arith::SIToFPOp>(loc, args.back().getType(),
+                                                  args.front());
+          b.create<linalg::YieldOp>(loc, siToFp.getResult());
+        });
+    rewriter.replaceOp(op, newOp.getResult(0));
+    return success();
+  }
+};
+
+template <typename TensorShapeOp>
+struct TensorShapeOpAndLinalgSIToFPCanonicalization
+    : public OpRewritePattern<linalg::GenericOp> {
+  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::GenericOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isaElemwiseSingleUnaryOpInterface(op)) {
+      return failure();
+    }
+    auto regionOps = mlir::triton::getRegionOps<linalg::GenericOp>(op);
+    if (!isa<arith::SIToFPOp>(regionOps.front())) {
+      return failure();
+    }
+
+    assert(regionOps.size() == 1 &&
+           "Expected a single operation in the linalg.generic region");
+
+    auto input = op.getInputs()[0];
+    auto prevOp = input.getDefiningOp<TensorShapeOp>();
+    if (!prevOp) {
+      return failure();
+    }
+
+    auto outputType =
+        cast<RankedTensorType>(op->getResultTypes()[0]).getElementType();
+    auto outputShape =
+        cast<RankedTensorType>(prevOp->getOperandTypes()[0]).getShape();
+    auto outputTensor =
+        rewriter.create<tensor::EmptyOp>(op->getLoc(), outputShape, outputType);
+
+    auto rank = outputShape.size();
+    SmallVector<AffineMap, 2> indexingMaps(
+        2, rewriter.getMultiDimIdentityMap(rank));
+    SmallVector<mlir::utils::IteratorType> iterators(
+        rank, mlir::utils::IteratorType::parallel);
+    auto sitofp = rewriter
+                      .create<linalg::GenericOp>(
+                          op->getLoc(), TypeRange{outputTensor.getType()},
+                          ValueRange{prevOp->getOperand(0)},
+                          ValueRange{outputTensor}, indexingMaps, iterators,
+                          [](OpBuilder &b, Location loc, ValueRange args) {
+                            auto siToFp = b.create<arith::SIToFPOp>(
+                                loc, args.back().getType(), args.front());
+                            b.create<linalg::YieldOp>(loc, siToFp.getResult());
+                          })
+                      ->getResults()[0];
+    auto newShape = rewriter.create<TensorShapeOp>(
+        op->getLoc(), op.getResultTypes()[0], sitofp,
+        prevOp.getReassociationIndices());
+    rewriter.replaceOp(op, newShape.getResult());
+    return success();
+  }
+};
+
+struct LinalgFillSIToFPFusion : public OpRewritePattern<linalg::GenericOp> {
+  using OpRewritePattern<linalg::GenericOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(linalg::GenericOp op,
+                                PatternRewriter &rewriter) const override {
+    if (!isaElemwiseSingleUnaryOpInterface(op)) {
+      return failure();
+    }
+    auto regionOps = mlir::triton::getRegionOps<linalg::GenericOp>(op);
+    if (!isa<arith::SIToFPOp>(regionOps.front())) {
+      return failure();
+    }
+
+    assert(regionOps.size() == 1 &&
+           "Expected a single operation in the linalg.generic region");
+
+    auto input = op.getInputs()[0];
+    auto fillOp = input.getDefiningOp<linalg::FillOp>();
+    if (!fillOp) {
+      return failure();
+    }
+
+    auto outputType =
+        cast<RankedTensorType>(op->getResultTypes()[0]).getElementType();
+    Value fillScalar = fillOp.getInputs()[0];
+    Value siToFpScalar =
+        rewriter.create<arith::SIToFPOp>(op.getLoc(), outputType, fillScalar);
+    auto newFill = rewriter
+                        .create<linalg::FillOp>(op.getLoc(),
+                                                ValueRange{siToFpScalar},
+                                                op.getOutputs()[0])
+                        ->getResult(0);
+
+    rewriter.replaceOp(op, newFill);
+    return success();
+  }
+};
+
+struct ArithExtSISitofpFusion : public OpRewritePattern<arith::SIToFPOp> {
+  using OpRewritePattern<arith::SIToFPOp>::OpRewritePattern;
+
+  LogicalResult matchAndRewrite(arith::SIToFPOp op,
+                                PatternRewriter &rewriter) const override {
+    auto extOp = op.getOperand().getDefiningOp<arith::ExtSIOp>();
+    if (!extOp)
+      return failure();
+
+    auto newSitofp = rewriter.create<arith::SIToFPOp>(
+        op.getLoc(), op.getType(), extOp.getOperand());
+    rewriter.replaceOp(op, newSitofp.getResult());
+    return success();
+  }
+};
 } // namespace
 
 void mlir::triton::populateLinalgBinaryOpFusionPatterns(
@@ -261,6 +478,18 @@ void mlir::triton::populateLinalgBinaryOpFusionPatterns(
       patterns.getContext());
   patterns.add<BinaryScalarAndTensorOpFusion<arith::MulFOp, mk::MulVS>>(
       patterns.getContext());
+}
+
+void mlir::triton::populateLinalgTypeConversionFusionPatterns(
+    RewritePatternSet &patterns) {
+  patterns.add<LinalgFPToSIAndSIToFPCanonicalization>(patterns.getContext());
+  patterns.add<LinalgExtSIAndSIToFPFusion>(patterns.getContext());
+  patterns.add<
+      TensorShapeOpAndLinalgSIToFPCanonicalization<tensor::ExpandShapeOp>,
+      TensorShapeOpAndLinalgSIToFPCanonicalization<tensor::CollapseShapeOp>>(
+      patterns.getContext());
+  patterns.add<LinalgFillSIToFPFusion>(patterns.getContext());
+  patterns.add<ArithExtSISitofpFusion>(patterns.getContext());
 }
 
 // TODO: Support linalg elementwise op fusion.

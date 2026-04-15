@@ -7,7 +7,6 @@
 - triton-3.3.0-cp310-cp310-linux_x86_64.whl
 - flag_gems-2.2-cp310-cp310-linux_x86_64.whl
 - flaggems_tests
-- triton_examples
 - scripts
   - install.sh
   - run_tsingmicro.sh
@@ -20,12 +19,10 @@
 
 - llvm: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/triton/tools/llvm-a66376b0-ubuntu-x64.tar.gz)
 - pytorch2.7等whl离线安装包: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/triton/offline_pkgs/offline_pkgs_v5.3.0.tar.gz)
-- docker 5.5.0: hub.tsingmicro.com/tx8/ubuntu/v5.5.0.1030:tsingmicro_release
-	- tx8_deps 20251205: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/triton/tx8_depends/tx8_depends_dev_20251205_164530.tar.gz)
-	- torch_txda 20251212: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/torch_txda/torch_txda%2Btxops-20251212-eb33daf9%2B8d7d6e7.tar.gz)
-- docker 5.6.0daily: hub.tsingmicro.com/tx8/ubuntu/daily:tsingmicro_release_patch.251219130722
-	- tx8_deps 20251218: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/triton/tx8_depends/tx8_depends_dev_20251218_164108.tar.gz)
-	- torch_txda 20251230: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/torch_txda/torch_txda%2Btxops-20251230-03541ed8%2B71a1e5a.tar.gz)
+- docker daily: hub.tsingmicro.com/tx8/ubuntu/daily:tsingmicro_release_tsm8.260331221212
+	- tx8_deps: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/triton/tx8_depends/tx8_depends_dev_20260507_104051.tar.gz)
+	- torch_txda: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/torch_txda/torch_txda-0.1.0%2B20260416.b8f53e8a-cp310-cp310-linux_x86_64.whl)
+    - txops: [制品库下载链接](http://172.50.1.66:8082/artifactory/tx8-generic-dev/torch_txda/txops-0.1.0%2B20260413.f0fa21a4-py3-none-any.whl)
 注意: tx8_deps、torch_txda迭代较快, 每个版本最终配套的以Triton项目发布为准.
 
 ## 版本运行说明
@@ -67,8 +64,8 @@ bash ./scripts/run_tsingmicro.sh pytest ./flaggems_tests/test_unary_pointwise_op
 3. 批量运行已支持的flaggems算子
 
 ```shell
-python3 ./flaggems_tests/test_flag_gems_all.py --test_set all_ops
+python3 ./flaggems_tests/test_flag_gems_all.py --test_set ci_ops
 ```
 
 4. kernel性能数据
-	在docker容器外,通过查看/var/npu_ep_log/device-Bus-Id号/KERNEL_yyyy_mm_dd_hh_mm_ss文件中"tx_kernel_launch_triton time: xxx us"获取。
+	请使用profiling工具统计

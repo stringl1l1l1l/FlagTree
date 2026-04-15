@@ -26,13 +26,11 @@ flaggems_dir=$WORKSPACE/flaggems
 publish_dir=$WORKSPACE/$sdk_name
 version_file=$publish_dir/code_version.txt
 
-if [ ! -d $publish_dir ]; then
-    mkdir $publish_dir
+if [ -d $publish_dir ]; then
+    rm -rf $publish_dir
 fi
-
-if [ ! -d $publish_dir/scripts ]; then
-    mkdir $publish_dir/scripts
-fi
+mkdir $publish_dir
+mkdir $publish_dir/scripts
 
 if [ ! -d $triton_dir ]; then
     echo "未找到triton项目目录"
@@ -53,7 +51,6 @@ else
             echo "Warning: Failed to get commit id in $dir"
         fi
         cp $triton_wheel $publish_dir
-        cp -r third_party/tsingmicro/examples/ $publish_dir/triton_examples
     popd
 fi
 
@@ -92,6 +89,7 @@ cp $script_dir/run_flaggems_on_multicards.sh $publish_dir/scripts
 cp $script_dir/../base/base_run.sh $publish_dir/scripts
 cp $script_dir/../requirements_ts.txt $publish_dir/scripts
 cp $script_dir/../tools/offline_python_deps.sh $publish_dir/scripts
+cp -r $project_dir/../pack $publish_dir
 # cp $project_dir/python/requirements.txt $publish_dir
 
 pushd $WORKSPACE
@@ -101,4 +99,5 @@ pushd $WORKSPACE
         rm -f $pkg_file
     fi
     tar -zcf $pkg_file $sdk_name
+    echo "succ publish ${pkg_file}"
 popd

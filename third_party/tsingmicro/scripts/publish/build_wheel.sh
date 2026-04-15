@@ -118,7 +118,7 @@ export LLVM_SYSPATH=$LLVM
 export TX8_DEPS_ROOT=$TX8_DEPS_ROOT
 # synchronous temporary solution: add waitfinish after every cintrinsic exec
 export ENABLE_SYNCHRONOUS_INTRINSIC=1
-export TX8_YOC_RT_THREAD_SMP=$TX8_DEPS_ROOT/tx8-yoc-rt-thread-smp
+export FLAGTREE_BACKEND=tsingmicro
 
 cd python
 python3 -m pip wheel . --no-build-isolation -v --verbos
@@ -130,3 +130,5 @@ if [ -f "$flaggems_wheel" ]; then
     rm -rf  $flaggems_wheel
 fi
 python3 -m pip wheel . --no-deps -v --verbos
+
+

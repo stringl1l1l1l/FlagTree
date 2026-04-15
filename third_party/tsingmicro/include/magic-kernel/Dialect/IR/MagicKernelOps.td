@@ -37,6 +37,11 @@ include "mlir/IR/EnumAttr.td"
 // Bufferable type.
 //===----------------------------------------------------------------------===//
 
+// Communication address-like operand.
+// Used as a placeholder during lowering/planning: may start as an integer
+// address (i64) and later be replaced with a buffer (tensor/memref) or ptr-like
+// value.
+
 def TensorOrMemref :
   AnyTypeOf<[AnyMemRef, AnyRankedTensor], "", "::mlir::ShapedType">;
 
@@ -51,6 +56,7 @@ def FPTensorOrMemref :
 
 def MKCommAddrLike :
   AnyTypeOf<[I64, TensorOrMemref], "comm-addr-like">;
+
 
 //
 // Interfaces
@@ -297,7 +303,9 @@ def DotOp : MKOp<"dot", [DestinationStyleOpInterface]> {
     TensorOrMemref:$a,           // Matrix A
     TensorOrMemref:$b,           // Matrix B
     Arg<TensorOrMemref, "the target memref", [MemWrite]>:$inits,
-    BoolAttr:$en_psum            // Enable psum. Used as accumulate buffer
+    BoolAttr:$en_psum,           // Enable psum. Used as accumulate buffer
+    BoolAttr:$is_transA,         // Indicate matrix A is a transposed matrix
+    BoolAttr:$is_transB          // Indicate matrix B is a transposed matrix. When B is like [N, K], is_transB = false.
   );
 
   let results = (outs Variadic<TensorOrMemref>:$d);
@@ -508,6 +516,20 @@ def BarrierOp : MKOp<"barrier"> {
   let assemblyFormat = "attr-dict";
 }
 
+def DistributeBarrierOp : MKOp<"distribute_barrier"> {
+  let summary = "Subgroup barrier with mesh topology";
+  let description = [{
+    The "distribute_barrier" op synchronizes only the tiles listed in
+    `mesh_physical_ids`.  This carries the TLE device_mesh topology through
+    the compiler pipeline and eventually lowers to __BarrierSubgroup().
+  }];
+  let arguments = (ins
+    DenseI32ArrayAttr:$mesh_physical_ids,
+    DenseI32ArrayAttr:$mesh_shape
+  );
+  let assemblyFormat = "attr-dict";
+}
+
 // =============================================================================
 // Communication Ops (TLE)
 // =============================================================================
@@ -528,7 +550,8 @@ def RemoteStoreOp : MKOp<"remote_store", [MemoryEffects<[MemRead<GlobalMemory>, 
     I64:$remote_die_id,         // ID of the remote die
     I64:$remote_tile_id,        // ID of the remote tile
     MKCommAddrLike:$dst_addr,   // Remote destination base address (or placeholder)
-    Arg<TensorOrMemref, "the source memref", [MemRead]>:$src  // Source buffer (read from here)
+    Arg<TensorOrMemref, "the source memref", [MemRead]>:$src,  // Source buffer (read from here)
+    OptionalAttr<DenseI32ArrayAttr>:$mesh_physical_ids
   );
 
   let results = (outs);

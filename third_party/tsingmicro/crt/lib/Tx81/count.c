@@ -9,13 +9,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __Count(uint64_t *src, uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmPeripheral *cmd = g_intrinsic()->peripheral_pointer;
-  TsmPeripheralInstr inst = {I_CGRA,
+  RcsPeripheral *cmd = g_intrinsic()->peripheral_pointer;
+  RcsPeripheralInstr inst = {I_CGRA,
                              {
                                  0,
                              },
@@ -27,7 +27,7 @@ void __Count(uint64_t *src, uint32_t elem_count, uint16_t fmt) {
   cmd->Count(&inst, (uint64_t)src, elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

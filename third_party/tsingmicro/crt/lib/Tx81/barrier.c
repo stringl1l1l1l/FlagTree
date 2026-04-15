@@ -9,9 +9,21 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
+#include <stdint.h>
 
+// Full-cluster barrier: synchronizes all tiles on the chip.
 void __Barrier() {
   INTRNISIC_RUN_SWITCH;
-  TsmWaitfinish();
+  RcsWaitfinish();
+}
+
+// Subgroup barrier: synchronizes a subset of tiles identified by
+// `physical_ids`.  For the MVP this conservatively falls back to a
+// full-cluster barrier.
+void __BarrierSubgroup(const uint32_t *physical_ids, uint32_t count) {
+  (void)physical_ids;
+  (void)count;
+  INTRNISIC_RUN_SWITCH;
+  RcsWaitfinish();
 }

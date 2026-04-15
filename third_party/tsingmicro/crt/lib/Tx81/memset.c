@@ -9,14 +9,12 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
-void __Memset(char *dst, int value, int *dst_shape, int *dst_stride, int rank,
-              uint16_t fmt) {
-  INTRNISIC_RUN_SWITCH;
+void RcsMemset(char *dst, int value, int elem_count, uint16_t fmt) {
   // Create command buffer.
-  TsmPeripheral *cmd = g_intrinsic()->peripheral_pointer;
-  TsmDataMoveInstr inst = {I_CGRA,
+  RcsPeripheral *cmd = g_intrinsic()->peripheral_pointer;
+  RcsDataMoveInstr inst = {I_TDMA,
                            {
                                0,
                            },
@@ -33,17 +31,61 @@ void __Memset(char *dst, int value, int *dst_shape, int *dst_stride, int rank,
   int iteration1 = 1;
   int iteration2 = 1;
 
+  St_StrideIteration si = {stride0,    iteration0, stride1,
+                           iteration1, stride2,    iteration2};
+  cmd->Memset(&inst, (uint64_t)dst, value, elem_count, &si, (Data_Format)fmt);
+
+  // Dispatch the command to accelerator
+  RcsExecute(&inst);
+  // RcsWaitfinish();
+  SYNCHRONOUS_INTRINSIC_SWITCH;
+}
+
+void SetZero(char *dst, int elem_count, uint16_t fmt) {
+  RcsLogic *logic = (RcsLogic *)getRcsOpPointer()->logic_pointer;
+  RcsLogicInstr inst = {I_CGRA,{0,},{0,}};
+  logic->XorVV(&inst, (uint64_t)dst, (uint64_t)dst, (uint64_t)dst, elem_count,
+             (Data_Format)fmt);
+  RcsExecute(&inst);
+}
+
+void __Memset(char *dst, int value, int *dst_shape, int *dst_stride, int rank,
+              uint16_t fmt) {
+  INTRNISIC_RUN_SWITCH;
+
   int elem_count = 1;
   for (int i = 0; i < rank; i++) {
     elem_count *= dst_shape[i];
   }
 
-  St_StrideIteration si = {stride0,    iteration0, stride1,
-                           iteration1, stride1,    iteration2};
-  cmd->Memset(&inst, (uint64_t)dst, value, elem_count, &si, (Data_Format)fmt);
+  if (fmt == Fmt_INT8) {
+    if (elem_count % 2 != 0) {
+      RcsMemset(dst, value, elem_count, fmt);
+      return;
+    } else {
+       // xor does not support int8, used fp16 replace
+      fmt        = Fmt_FP16;
+      elem_count = shift_div(elem_count, 2);
+    }
+  }
 
-  // Dispatch the command to accelerator
-  TsmExecute(&inst);
-  TsmWaitfinish();
+  if (value == 0) {
+    SetZero(dst, elem_count, fmt);
+  }
+  else {
+    if ((get_dtype_size_new(fmt) == 4 && value == 0xffffffff)
+      || (get_dtype_size_new(fmt) == 2 && (uint16_t)value == 0xffff)
+      || (get_dtype_size_new(fmt) == 1 && (uint8_t)value == 0xff)) {
+      SetZero(dst, elem_count, fmt);
+      RcsLogic *logic = (RcsLogic *)getRcsOpPointer()->logic_pointer;
+      RcsLogicInstr inst = {I_CGRA,{0,},{0,}};
+      // Some specific values, addvs are not supported.
+      logic->BoolNotV(&inst, (uint64_t)dst, (uint64_t)dst, elem_count*get_dtype_size_new(fmt)*8);
+      RcsExecute(&inst);
+    } else {
+      RcsMemset(dst, value, elem_count, fmt);
+    }
+  }
+
   // Destroy the command buffer.
 }

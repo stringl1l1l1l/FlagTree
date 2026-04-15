@@ -12,7 +12,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "tsingmicro-tx81/Conversion/MKToTx81/MKToTx81.h"
-#include "Tx81/tx81.h"
+#include "Tx81/tx81_def.h"
 #include "magic-kernel/Dialect/IR/MagicKernelDialect.h"
 #include "mlir/Dialect/Arith/IR/Arith.h"
 #include "mlir/Dialect/Bufferization/IR/Bufferization.h"
@@ -414,10 +414,10 @@ public:
 
       if (isDstSPM)
         rewriter.replaceOpWithNewOp<tx::Rdma1dOp>(op, dstPtr, srcPtr, elemCount,
-                                                  fmt);
+                                                  fmt, srcPtr);
       else
         rewriter.replaceOpWithNewOp<tx::Wdma1dOp>(op, dstPtr, srcPtr, elemCount,
-                                                  fmt);
+                                                  fmt, dstPtr);
       return success();
     }
 
@@ -442,7 +442,8 @@ public:
           dstStrides,                            // dst stride
           rewriter.getI32IntegerAttr(rank),      // rank
           rewriter.getI32IntegerAttr(elemBytes), // elem bytes
-          rewriter.getI32IntegerAttr(srcFmt)     // Format
+          rewriter.getI32IntegerAttr(srcFmt),    // Format
+          srcPtr                                 // base_ddr_addr (placeholder)
       );
     } else {
       auto wdmaOp = rewriter.create<tx::WdmaOp>(
@@ -453,7 +454,8 @@ public:
           dstStrides,                            // dst stride
           rewriter.getI32IntegerAttr(rank),      // rank
           rewriter.getI32IntegerAttr(elemBytes), // elem bytes
-          rewriter.getI32IntegerAttr(srcFmt)     // Format
+          rewriter.getI32IntegerAttr(srcFmt),    // Format
+          dstPtr                                 // base_ddr_addr (placeholder)
       );
     }
     rewriter.eraseOp(op);
@@ -723,9 +725,17 @@ public:
     auto aType = cast<MemRefType>(a.getType());     // (K/64)xMx64
     auto bType = cast<MemRefType>(b.getType());     // (N/64)xKx64
     auto dstType = cast<MemRefType>(dst.getType()); // (N/64)xMx64
-    int32_t M = aType.getShape()[1];
-    int32_t K = bType.getShape()[1];
-    int32_t N = bType.getShape()[0] * bType.getShape()[2];
+
+    auto transA = op.getIsTransA();
+    auto transB = op.getIsTransB();
+    int32_t M = transA ? aType.getShape()[0] * aType.getShape()[2]
+                       : aType.getShape()[1];
+    // transB = true means b type is K x N
+    int32_t K = transB ? bType.getShape()[1]
+                       : bType.getShape()[0] * bType.getShape()[2];
+    int32_t N = transB ? bType.getShape()[0] * bType.getShape()[2]
+                       : bType.getShape()[1];
+
     auto dims = rewriter.getI32ArrayAttr({M, K, N});
     Data_Format srcFmt = getFormatCode(aType);
     Data_Format dstFmt = getFormatCode(dstType);
@@ -758,8 +768,8 @@ public:
         dims,               // dimensions [M,K,N]
         op.getEnPsumAttr(), // en_psum. Used as accumulate buffer
         dstPtr, //  The address of psum in SPM, Always same to output
-        rewriter.getBoolAttr(false),                   // trans_src_a
-        rewriter.getBoolAttr(true),                    // trans_src_b.
+        op.getIsTransAAttr(),                   // trans_src_a
+        op.getIsTransBAttr(),                    // trans_src_b.
         rewriter.getI32IntegerAttr(1),                 // batch_src_a
         rewriter.getI32IntegerAttr(1),                 // batch_src_b
         rewriter.getI32IntegerAttr(ActFuncMode::None), // relu_mode.
@@ -1609,6 +1619,8 @@ struct ElementwiseConversion : public OpConversionPattern<linalg::GenericOp> {
             return ZeroPointConvertOp<tx::INT8ToFP32Op>(op, adaptor, rewriter);
           } else if (inputType.isInteger(8) && outputType.isF16()) {
             return ZeroPointConvertOp<tx::INT8ToFP16Op>(op, adaptor, rewriter);
+          } else if (inputType.isInteger(8) && outputType.isBF16()) {
+            return ZeroPointConvertOp<tx::INT8ToBF16Op>(op, adaptor, rewriter);
           } else if (inputType.isInteger(16) && outputType.isF32()) {
             return RoundConvertOp<tx::INT16ToFP32Op>(op, adaptor, rewriter);
           } else if (inputType.isInteger(16) && outputType.isF16()) {
@@ -1617,6 +1629,8 @@ struct ElementwiseConversion : public OpConversionPattern<linalg::GenericOp> {
             return RoundConvertOp<tx::INT32ToFP16Op>(op, adaptor, rewriter);
           } else if (inputType.isInteger(32) && outputType.isF32()) {
             return RoundConvertOp<tx::INT32ToFP32Op>(op, adaptor, rewriter);
+          } else if (inputType.isInteger(32) && outputType.isBF16()) {
+            return RoundConvertOp<tx::INT32ToBF16Op>(op, adaptor, rewriter);
           } else {
             return rewriter.notifyMatchFailure(
                 op, "Unsupported input/output type combination for integer to "
@@ -1651,6 +1665,12 @@ struct ElementwiseConversion : public OpConversionPattern<linalg::GenericOp> {
                                                      RND_MODE::RND_ZERO);
           } else if (inputType.isF32() && outputType.isInteger(32)) {
             return RoundConvertOp<tx::FP32ToINT32Op>(op, adaptor, rewriter,
+                                                     RND_MODE::RND_ZERO);
+          } else if (inputType.isBF16() && outputType.isInteger(16)) {
+            return RoundConvertOp<tx::BF16ToINT16Op>(op, adaptor, rewriter,
+                                                     RND_MODE::RND_ZERO);
+          } else if (inputType.isBF16() && outputType.isInteger(32)) {
+            return RoundConvertOp<tx::BF16ToINT32Op>(op, adaptor, rewriter,
                                                      RND_MODE::RND_ZERO);
           } else {
             return rewriter.notifyMatchFailure(
@@ -1779,7 +1799,22 @@ struct BarrierConversion : public OpConversionPattern<MKOpT> {
     Location loc = op.getLoc();
     rewriter.create<TxOpT>(loc);
     rewriter.eraseOp(op);
+    return success();
+  }
+};
 
+struct DistributeBarrierConversion
+    : public OpConversionPattern<mk::DistributeBarrierOp> {
+  using OpConversionPattern<mk::DistributeBarrierOp>::OpConversionPattern;
+  using OpAdaptor = mk::DistributeBarrierOp::Adaptor;
+
+  LogicalResult
+  matchAndRewrite(mk::DistributeBarrierOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    Location loc = op.getLoc();
+    rewriter.create<tx::DistributeBarrierOp>(
+        loc, op.getMeshPhysicalIdsAttr(), op.getMeshShapeAttr());
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -1802,11 +1837,9 @@ struct RemoteLoadConversion : public OpConversionPattern<mk::RemoteLoadOp> {
     Type dstOrigTy = op.getDst().getType();
     ShapedType shapedTy = dyn_cast<ShapedType>(dstOrigTy);
     if (!shapedTy)
-      return rewriter.notifyMatchFailure(
-          op, "mk.remote_load dst must be shaped type");
+      return rewriter.notifyMatchFailure(op, "mk.remote_load dst must be shaped type");
 
-    int64_t elemBytesConst =
-        static_cast<int64_t>(getElemByte(shapedTy.getElementType()));
+    int64_t elemBytesConst = static_cast<int64_t>(getElemByte(shapedTy.getElementType()));
     Value elemBytesI32 = rewriter.create<arith::ConstantIntOp>(
         loc, elemBytesConst, rewriter.getI32Type());
 
@@ -1820,8 +1853,7 @@ struct RemoteLoadConversion : public OpConversionPattern<mk::RemoteLoadOp> {
       // Dynamic shape: compute element count from runtime sizes.
       // Requires memref operand to extract metadata.
       if (!isa<MemRefType>(dstVal.getType()))
-        return rewriter.notifyMatchFailure(
-            op, "dynamic-shaped remote_load requires memref dst");
+        return rewriter.notifyMatchFailure(op, "dynamic-shaped remote_load requires memref dst");
       auto [basePtr, sizes, strides] = createMetadata(rewriter, loc, dstVal);
       (void)basePtr;
       (void)strides;
@@ -1830,8 +1862,8 @@ struct RemoteLoadConversion : public OpConversionPattern<mk::RemoteLoadOp> {
           loc, rewriter.getI64Type(), elemCount);
       Value elemBytesI64 = rewriter.create<arith::ExtUIOp>(
           loc, rewriter.getI64Type(), elemBytesI32);
-      dataSizeI64 = rewriter.create<arith::MulIOp>(loc, elemCountI64.getType(),
-                                                   elemCountI64, elemBytesI64);
+      dataSizeI64 = rewriter.create<arith::MulIOp>(
+          loc, elemCountI64.getType(), elemCountI64, elemBytesI64);
     }
 
     // Convert dst memref to address (I64)
@@ -1849,9 +1881,8 @@ struct RemoteLoadConversion : public OpConversionPattern<mk::RemoteLoadOp> {
         dataSizeI64               // data_size (I64)
     );
 
-    // mk.remote_load has results; tx.remote_load is void. Replace results with
-    // dst. (converted) dst operand value, which represents the destination
-    // buffer.
+    // mk.remote_load has results; tx.remote_load is void. Replace results with dst.
+    // (converted) dst operand value, which represents the destination buffer.
     if (op->getNumResults() > 0) {
       SmallVector<Value, 1> repl;
       repl.reserve(op->getNumResults());
@@ -1883,11 +1914,9 @@ struct RemoteStoreConversion : public OpConversionPattern<mk::RemoteStoreOp> {
     Type srcOrigTy = op.getSrc().getType();
     ShapedType shapedTy = dyn_cast<ShapedType>(srcOrigTy);
     if (!shapedTy)
-      return rewriter.notifyMatchFailure(
-          op, "mk.remote_store src must be shaped type");
+      return rewriter.notifyMatchFailure(op, "mk.remote_store src must be shaped type");
 
-    int64_t elemBytesConst =
-        static_cast<int64_t>(getElemByte(shapedTy.getElementType()));
+    int64_t elemBytesConst = static_cast<int64_t>(getElemByte(shapedTy.getElementType()));
     Value elemBytesI32 = rewriter.create<arith::ConstantIntOp>(
         loc, elemBytesConst, rewriter.getI32Type());
 
@@ -1899,8 +1928,7 @@ struct RemoteStoreConversion : public OpConversionPattern<mk::RemoteStoreOp> {
           loc, totalBytes, rewriter.getI64Type());
     } else {
       if (!isa<MemRefType>(srcVal.getType()))
-        return rewriter.notifyMatchFailure(
-            op, "dynamic-shaped remote_store requires memref src");
+        return rewriter.notifyMatchFailure(op, "dynamic-shaped remote_store requires memref src");
       auto [basePtr, sizes, strides] = createMetadata(rewriter, loc, srcVal);
       (void)basePtr;
       (void)strides;
@@ -1909,8 +1937,8 @@ struct RemoteStoreConversion : public OpConversionPattern<mk::RemoteStoreOp> {
           loc, rewriter.getI64Type(), elemCount);
       Value elemBytesI64 = rewriter.create<arith::ExtUIOp>(
           loc, rewriter.getI64Type(), elemBytesI32);
-      dataSizeI64 = rewriter.create<arith::MulIOp>(loc, elemCountI64.getType(),
-                                                   elemCountI64, elemBytesI64);
+      dataSizeI64 = rewriter.create<arith::MulIOp>(
+          loc, elemCountI64.getType(), elemCountI64, elemBytesI64);
     }
 
     // Convert src memref to address (I64)
@@ -1937,7 +1965,8 @@ struct RemoteStoreConversion : public OpConversionPattern<mk::RemoteStoreOp> {
         dstAddr,                  // dst (I64 address)
         srcAddr,                  // src (I64 address)
         elemBytesI32,             // elem_bytes (I32)
-        dataSizeI64               // data_size (I64)
+        dataSizeI64,              // data_size (I64)
+        op.getMeshPhysicalIdsAttr()
     );
 
     // mk.remote_store has no results, just erase it
@@ -1946,6 +1975,7 @@ struct RemoteStoreConversion : public OpConversionPattern<mk::RemoteStoreOp> {
     return success();
   }
 };
+
 
 struct PrintConversion : public OpConversionPattern<mk::PrintOp> {
   using OpConversionPattern<mk::PrintOp>::OpConversionPattern;
@@ -2365,6 +2395,7 @@ void mlir::triton::populateMKToTx81ConversionPatterns(
                BarrierConversion<mk::BarrierOp, tx::BarrierOp>,
                BarrierConversion<mk::AtomicBarrierInOp,tx::AtomicBarrierInOp>,
                BarrierConversion<mk::AtomicBarrierOutOp,tx::AtomicBarrierOutOp>,
+               DistributeBarrierConversion,
                PrintConversion,
                RemoteStoreConversion,
                RemoteLoadConversion,

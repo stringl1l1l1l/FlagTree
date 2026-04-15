@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 // WORKAROUND for undefined symbols in libkcorert.a
 int main(int argc, char **argv) { return 0; }

@@ -9,14 +9,14 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __BoolEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                    uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -28,7 +28,7 @@ void __BoolEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                    elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -38,8 +38,8 @@ void __BoolUnEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                      uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -51,8 +51,9 @@ void __BoolUnEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                      elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
-  TsmWaitfinish();
+  RcsExecute(&inst);
+//   RcsWaitfinish();
+  SYNCHRONOUS_INTRINSIC_SWITCH;
   // Destroy the command buffer.
 }
 
@@ -60,8 +61,8 @@ void __BoolGreaterEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                           uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -73,8 +74,9 @@ void __BoolGreaterEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                           elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
-  TsmWaitfinish();
+  RcsExecute(&inst);
+//   RcsWaitfinish();
+  SYNCHRONOUS_INTRINSIC_SWITCH;
   // Destroy the command buffer.
 }
 
@@ -82,8 +84,8 @@ void __BoolGreaterVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                      uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -95,7 +97,7 @@ void __BoolGreaterVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                      elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -105,8 +107,8 @@ void __BoolLessEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                        uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -118,7 +120,7 @@ void __BoolLessEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                        elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -128,8 +130,8 @@ void __BoolLessThenVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                       uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -141,7 +143,7 @@ void __BoolLessThenVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                       elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -151,8 +153,8 @@ void __EqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -164,7 +166,7 @@ void __EqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -174,8 +176,8 @@ void __UnEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                  uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -187,7 +189,7 @@ void __UnEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                  elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -197,8 +199,8 @@ void __GreaterEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                       uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -210,7 +212,7 @@ void __GreaterEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                       elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -220,8 +222,8 @@ void __GreaterVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                  uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -233,7 +235,7 @@ void __GreaterVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                  elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -243,8 +245,8 @@ void __LessEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                    uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -256,7 +258,7 @@ void __LessEqualVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                    elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -266,8 +268,8 @@ void __LessThenVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                   uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -279,7 +281,7 @@ void __LessThenVV(uint64_t *src0, uint64_t *src1, uint64_t *dst,
                   elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -289,8 +291,8 @@ void __BoolEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                    uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -302,7 +304,7 @@ void __BoolEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                    (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -312,8 +314,8 @@ void __BoolUnEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                      uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -325,7 +327,7 @@ void __BoolUnEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                      (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -335,8 +337,8 @@ void __BoolGreaterEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                           uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -348,7 +350,7 @@ void __BoolGreaterEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                           elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -358,8 +360,8 @@ void __BoolGreaterVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                      uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -371,7 +373,7 @@ void __BoolGreaterVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                      (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -381,8 +383,8 @@ void __BoolLessEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                        uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -394,7 +396,7 @@ void __BoolLessEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                        (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -404,8 +406,8 @@ void __BoolLessThenVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                       uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -417,7 +419,7 @@ void __BoolLessThenVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                       (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -427,8 +429,8 @@ void __EqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -440,7 +442,7 @@ void __EqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -450,8 +452,8 @@ void __UnEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                  uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -463,7 +465,7 @@ void __UnEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                  (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -473,8 +475,8 @@ void __GreaterEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                       uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -486,7 +488,7 @@ void __GreaterEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                       (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -496,8 +498,8 @@ void __GreaterVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                  uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -509,7 +511,7 @@ void __GreaterVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                  (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -519,8 +521,8 @@ void __LessEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                    uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -532,7 +534,7 @@ void __LessEqualVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                    (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.
@@ -542,8 +544,8 @@ void __LessThenVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                   uint32_t elem_count, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmRelation *cmd = g_intrinsic()->relation_pointer;
-  TsmRelationInstr inst = {I_CGRA,
+  RcsRelation *cmd = g_intrinsic()->relation_pointer;
+  RcsRelationInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -555,7 +557,7 @@ void __LessThenVS(uint64_t *src0, uint32_t src1, uint64_t *dst,
                   (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

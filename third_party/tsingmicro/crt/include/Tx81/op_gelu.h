@@ -1,11 +1,11 @@
 #ifndef CRT_TARGET_GELU_H
 #define CRT_TARGET_GELU_H
 
-#include "tx81.h"
+#include "tx81_run.h"
 
-hybrid_value get_ptr_value_by_idx(void *addr, size_t idx, Data_Format dtype);
+triton_hybrid_value get_ptr_value_by_idx(void *addr, size_t idx, Data_Format dtype);
 
-void set_ptr_value_by_idx(void *addr, hybrid_value value, uint64_t idx,
+void set_ptr_value_by_idx(void *addr, triton_hybrid_value value, uint64_t idx,
                           Data_Format dtype);
 void get_erf_value(void *in_addr, void *out_addr, uint64_t count,
                    Data_Format dtype);

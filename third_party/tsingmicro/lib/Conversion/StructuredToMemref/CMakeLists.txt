@@ -3,7 +3,7 @@ add_triton_library(StructuredToMemref
   StructuredToMemrefPass.cpp
 
   DEPENDS
-  StructuredToMemrefConversionPassIncGen
+  TsmcStructuredToMemrefConversionPassIncGen
 
   LINK_LIBS PUBLIC
   MLIRSCFTransforms

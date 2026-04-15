@@ -1,0 +1,32 @@
+============================= test session starts ==============================
+platform linux -- Python 3.10.12, pytest-8.4.1, pluggy-1.6.0 -- /login_home/yinle/workspace/triton/.venv/bin/python
+cachedir: .pytest_cache
+rootdir: /login_home/yinle/workspace/triton
+configfile: pyproject.toml
+collecting ... collected 23 items
+
+test_attention_oob.py::TestAttentionOOB::test_normal_no_oob PASSED       [  4%]
+test_attention_oob.py::TestAttentionOOB::test_n_ctx_inflated_oob PASSED  [  8%]
+test_attention_oob.py::TestAttentionOOB::test_stride_corrupted_oob PASSED [ 13%]
+test_dropout_oob.py::TestDropoutOOB::test_normal_no_oob PASSED           [ 17%]
+test_dropout_oob.py::TestDropoutOOB::test_offset_n_elements_scale PASSED [ 21%]
+test_dropout_oob.py::TestDropoutOOB::test_mask_missing PASSED            [ 26%]
+test_dsa_vec_add_oob.py::TestDSAVecAddOOB::test_normal_no_oob PASSED     [ 30%]
+test_dsa_vec_add_oob.py::TestDSAVecAddOOB::test_n_elements_inflated_oob PASSED [ 34%]
+test_dsa_vec_add_oob.py::TestDSAVecAddOOB::test_mask_missing_oob PASSED  [ 39%]
+test_dsa_vec_add_oob.py::TestDSAVecAddOOB::test_n_iter_wrong_oob PASSED  [ 43%]
+test_extern_oob.py::TestExternOOB::test_normal_no_oob PASSED             [ 47%]
+test_extern_oob.py::TestExternOOB::test_offset_pid_shift PASSED          [ 52%]
+test_extern_oob.py::TestExternOOB::test_mask_missing PASSED              [ 56%]
+test_gather_scatter_oob.py::TestGatherScatterOOB::test_normal_no_oob PASSED [ 60%]
+test_gather_scatter_oob.py::TestGatherScatterOOB::test_index_partial_oob PASSED [ 65%]
+test_gather_scatter_oob.py::TestGatherScatterOOB::test_index_full_oob PASSED [ 69%]
+test_gather_scatter_oob.py::TestGatherScatterOOB::test_indirect_index_oob PASSED [ 73%]
+test_vec_add_oob.py::TestVecAddOOB::test_normal_no_oob PASSED            [ 78%]
+test_vec_add_oob.py::TestVecAddOOB::test_offset_oob_n_elements PASSED    [ 82%]
+test_vec_add_oob.py::TestVecAddOOB::test_offset_calc_pid_shift PASSED    [ 86%]
+test_vec_add_oob.py::TestVecAddOOB::test_offset_calc_block_scale PASSED  [ 91%]
+test_vec_add_oob.py::TestVecAddOOB::test_mask_missing PASSED             [ 95%]
+test_vec_add_oob.py::TestVecAddOOB::test_mask_wrong_cmp PASSED           [100%]
+
+======================== 23 passed in 265.65s (0:04:25) ========================

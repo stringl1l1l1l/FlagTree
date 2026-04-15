@@ -33,8 +33,8 @@
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
 #include "mlir/Dialect/Tensor/IR/Tensor.h"
 
-#include "magic-kernel/Conversion/TLEToMK/Passes.h"
 #include "magic-kernel/Dialect/IR/MagicKernelDialect.h"
+#include "magic-kernel/Conversion/TLEToMK/Passes.h"
 #include "third_party/tle/include/tle-dsa/Conversion/DsaToCore/DsaToCore.h"
 #include "third_party/tle/include/tle-dsa/Dialect/IR/DsaDialect.h"
 #include "triton-shared/Conversion/ConvertTritonPtr/Passes.h"
@@ -56,6 +56,7 @@
 #include "magic-kernel/Conversion/CoreDialectsToMK/Passes.h"
 #include "magic-kernel/Conversion/LegalizeTensorFormLoops/Passes.h"
 #include "magic-kernel/Conversion/LinalgToMK/Passes.h"
+#include "magic-kernel/Conversion/MKPipeline/Passes.h"
 #include "mlir/Dialect/Linalg/Passes.h"
 #include "tsingmicro-tx81/Conversion/AllocateSharedMemory/Passes.h"
 #include "tsingmicro-tx81/Conversion/ExportKernelSymbols/Passes.h"
@@ -63,8 +64,11 @@
 #include "tsingmicro-tx81/Conversion/Tx81MemrefToLLVM/Passes.h"
 #include "tsingmicro-tx81/Conversion/Tx81ToLLVM/KernelArgBufferPass.h"
 #include "tsingmicro-tx81/Conversion/Tx81ToLLVM/Passes.h"
+#include "tsingmicro-tx81/Conversion/ExportKernelSymbols/Passes.h"
+#include "tsingmicro-tx81/Transforms/Passes.h"
 
 #include "magic-kernel/Transforms/BufferizableOpInterfaceImpl.h"
+#include "magic-kernel/Transforms/Passes.h"
 
 #include "mlir/InitAllDialects.h"
 #include "mlir/InitAllExtensions.h"
@@ -82,122 +86,127 @@ void registerTestTritonAMDGPURangeAnalysis();
 } // namespace mlir
 
 inline void registerTritonDialects(mlir::DialectRegistry &registry) {
-  mlir::registerAllPasses();
-  mlir::registerTritonPasses();
-  mlir::triton::gpu::registerTritonGPUPasses();
-  mlir::registerLinalgPasses();
-  mlir::dsa::registerDsaMemoryToCorePass();
-  mlir::triton::registerTLEToMKPass();
-  mlir::registerTritonNvidiaGPUPasses();
-  mlir::test::registerTestAliasPass();
-  mlir::test::registerTestAlignmentPass();
-  mlir::test::registerTestAllocationPass();
-  mlir::test::registerTestMembarPass();
-  mlir::test::registerTestTritonAMDGPURangeAnalysis();
-  mlir::triton::registerTritonToLinalgPass();
-  mlir::triton::registerTritonToStructuredPass();
-  mlir::triton::registerTritonToUnstructuredPass();
-  mlir::triton::registerTritonArithToLinalgPasses();
-  mlir::triton::registerConvertTritonToTritonGPUPass();
-  mlir::triton::registerStructuredToMemrefPasses();
-  mlir::triton::registerUnstructuredToMemref();
-  mlir::triton::registerTritonPtrToMemref();
-  mlir::triton::registerTritonToCoreDialectsPass();
-  mlir::triton::registerReconcilePtrCasts();
-  mlir::triton::registerTritonToCoreDialectsPass();
-  mlir::triton::registerConvertTritonToTritonGPUPass();
-  mlir::triton::gpu::registerAllocateSharedMemoryPass();
-  mlir::triton::gpu::registerTritonGPUAllocateWarpGroups();
-  mlir::triton::gpu::registerTritonGPUGlobalScratchAllocationPass();
-  mlir::triton::registerConvertWarpSpecializeToLLVM();
-  mlir::triton::registerConvertTritonGPUToLLVMPass();
-  mlir::triton::registerConvertNVGPUToLLVMPass();
-  mlir::registerLLVMDIScope();
+    mlir::registerAllPasses();
+    mlir::registerTritonPasses();
+    mlir::triton::gpu::registerTritonGPUPasses();
+    mlir::registerLinalgPasses();
+    mlir::dsa::registerDsaMemoryToCorePass();
+    mlir::triton::registerTLEToMKPass();
+    mlir::registerTritonNvidiaGPUPasses();
+    mlir::test::registerTestAliasPass();
+    mlir::test::registerTestAlignmentPass();
+    mlir::test::registerTestAllocationPass();
+    mlir::test::registerTestMembarPass();
+    mlir::test::registerTestTritonAMDGPURangeAnalysis();
+    mlir::triton::registerTritonToLinalgPass();
+    mlir::triton::registerTritonToStructuredPass();
+    mlir::triton::registerTritonToUnstructuredPass();
+    mlir::triton::registerTritonArithToLinalgPasses();
+    mlir::triton::registerConvertTritonToTritonGPUPass();
+    mlir::triton::registerStructuredToMemrefPasses();
+    mlir::triton::registerUnstructuredToMemref();
+    mlir::triton::registerTritonPtrToMemref();
+    mlir::triton::registerTritonToCoreDialectsPass();
+    mlir::triton::registerReconcilePtrCasts();
+    mlir::triton::registerTritonToCoreDialectsPass();
+    mlir::triton::registerConvertTritonToTritonGPUPass();
+    mlir::triton::gpu::registerAllocateSharedMemoryPass();
+    mlir::triton::gpu::registerTritonGPUAllocateWarpGroups();
+    mlir::triton::gpu::registerTritonGPUGlobalScratchAllocationPass();
+    mlir::triton::registerConvertWarpSpecializeToLLVM();
+    mlir::triton::registerConvertTritonGPUToLLVMPass();
+    mlir::triton::registerConvertNVGPUToLLVMPass();
+    mlir::registerLLVMDIScope();
 
-  // Core dialects to MK layer conversion passes
-  mlir::triton::registerTx81MemrefToLLVMPass();
-  mlir::triton::registerLinalgToMKPass();
-  mlir::triton::registerCoreDialectsToMKPass();
-  mlir::triton::registerLegalizeTensorFormLoopsPass();
-  mlir::addr::registerAddrToLLVMPass();
-  mlir::triton::registerLinalgTilingPass();
-  mlir::triton::registerLinalgFusionPass();
+    // Core dialects to MK layer conversion passes
+    mlir::triton::registerTx81MemrefToLLVMPass();
+    mlir::triton::registerLinalgToMKPass();
+    mlir::triton::registerCoreDialectsToMKPass();
+    mlir::triton::registerLegalizeTensorFormLoopsPass();
+    mlir::addr::registerAddrToLLVMPass();
+    mlir::triton::registerLinalgTilingPass();
+    mlir::triton::registerLinalgFusionPass();
 
-  // TsingMicro specific conversion passes
-  mlir::triton::registerMKToTx81Pass();
-  mlir::triton::alloc::registerAllocateSharedMemoryPass();
-  mlir::triton::registerTx81ToLLVMPass();
-  mlir::triton::registerExportKernelSymbols();
-  mlir::triton::registerKernelArgBufferPass();
+    mlir::triton::registerMaterializeStridedLinalgInputsPass();
+	// TsingMicro specific conversion passes
+    mlir::triton::registerMKToTx81Pass();
+    mlir::triton::alloc::registerAllocateSharedMemoryPass();
+    mlir::triton::registerTx81ToLLVMPass();
+    mlir::triton::registerExportKernelSymbols();
+    mlir::triton::registerKernelArgBufferPass();
+    mlir::triton::registerMKPipelinePass();
+    mlir::triton::registerMKLoopBoundCanonicalizePass();
 
-  // TritonAMDGPUToLLVM passes
-  mlir::triton::registerConvertTritonAMDGPUToLLVM();
-  mlir::triton::registerConvertBuiltinFuncToLLVM();
-  mlir::triton::registerDecomposeUnsupportedAMDConversions();
-  mlir::triton::registerOptimizeAMDLDSUsage();
+    // TsingMicroTx81Transforms passes
+    mlir::triton::registerInsertBarrierPass();
+    mlir::triton::registerTx81ResolveDmaBaseAddrPass();
 
-  // TritonAMDGPUTransforms passes
-  mlir::registerTritonAMDGPUAccelerateMatmul();
-  mlir::registerTritonAMDGPUOptimizeEpilogue();
-  mlir::registerTritonAMDGPUHoistLayoutConversions();
-  mlir::registerTritonAMDGPUReorderInstructions();
-  mlir::registerTritonAMDGPUBlockPingpong();
-  mlir::registerTritonAMDGPUStreamPipeline();
-  mlir::registerTritonAMDGPUCanonicalizePointers();
-  mlir::registerTritonAMDGPUConvertToBufferOps();
-  mlir::triton::registerTritonAMDGPUInsertInstructionSchedHints();
-  mlir::triton::registerTritonAMDGPULowerInstructionSchedHints();
+    // TritonAMDGPUToLLVM passes
+    mlir::triton::registerConvertTritonAMDGPUToLLVM();
+    mlir::triton::registerConvertBuiltinFuncToLLVM();
+    mlir::triton::registerDecomposeUnsupportedAMDConversions();
+    mlir::triton::registerOptimizeAMDLDSUsage();
 
-  // Math dialect passes
-  mlir::test::registerTestMathPolynomialApproximationPass();
+    // TritonAMDGPUTransforms passes
+    mlir::registerTritonAMDGPUAccelerateMatmul();
+    mlir::registerTritonAMDGPUOptimizeEpilogue();
+    mlir::registerTritonAMDGPUHoistLayoutConversions();
+    mlir::registerTritonAMDGPUReorderInstructions();
+    mlir::registerTritonAMDGPUBlockPingpong();
+    mlir::registerTritonAMDGPUStreamPipeline();
+    mlir::registerTritonAMDGPUCanonicalizePointers();
+    mlir::registerTritonAMDGPUConvertToBufferOps();
+    mlir::triton::registerTritonAMDGPUInsertInstructionSchedHints();
+    mlir::triton::registerTritonAMDGPULowerInstructionSchedHints();
 
-  // FIXME: May not need all of these
-  // mlir::registerAllDialects(registry);
-  // Register all external models.
-  mlir::affine::registerValueBoundsOpInterfaceExternalModels(registry);
-  mlir::arith::registerBufferDeallocationOpInterfaceExternalModels(registry);
-  mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::arith::registerBufferViewFlowOpInterfaceExternalModels(registry);
-  mlir::arith::registerShardingInterfaceExternalModels(registry);
-  mlir::arith::registerValueBoundsOpInterfaceExternalModels(registry);
-  mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(
-      registry);
-  mlir::builtin::registerCastOpInterfaceExternalModels(registry);
-  mlir::cf::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::cf::registerBufferDeallocationOpInterfaceExternalModels(registry);
-  mlir::gpu::registerBufferDeallocationOpInterfaceExternalModels(registry);
-  mlir::gpu::registerValueBoundsOpInterfaceExternalModels(registry);
-  mlir::LLVM::registerInlinerInterface(registry);
-  mlir::NVVM::registerInlinerInterface(registry);
-  mlir::linalg::registerAllDialectInterfaceImplementations(registry);
-  mlir::linalg::registerRuntimeVerifiableOpInterfaceExternalModels(registry);
-  mlir::memref::registerAllocationOpInterfaceExternalModels(registry);
-  mlir::memref::registerBufferViewFlowOpInterfaceExternalModels(registry);
-  mlir::memref::registerRuntimeVerifiableOpInterfaceExternalModels(registry);
-  mlir::memref::registerValueBoundsOpInterfaceExternalModels(registry);
-  mlir::memref::registerMemorySlotExternalModels(registry);
+    // Math dialect passes
+    mlir::test::registerTestMathPolynomialApproximationPass();
 
-  mlir::scf::registerBufferDeallocationOpInterfaceExternalModels(registry);
-  mlir::scf::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::scf::registerValueBoundsOpInterfaceExternalModels(registry);
-  mlir::shape::registerBufferizableOpInterfaceExternalModels(registry);
+    // FIXME: May not need all of these
+    // mlir::registerAllDialects(registry);
+    // Register all external models.
+    mlir::affine::registerValueBoundsOpInterfaceExternalModels(registry);
+    mlir::arith::registerBufferDeallocationOpInterfaceExternalModels(registry);
+    mlir::arith::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::arith::registerBufferViewFlowOpInterfaceExternalModels(registry);
+    mlir::arith::registerShardingInterfaceExternalModels(registry);
+    mlir::arith::registerValueBoundsOpInterfaceExternalModels(registry);
+    mlir::bufferization::func_ext::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::builtin::registerCastOpInterfaceExternalModels(registry);
+    mlir::cf::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::cf::registerBufferDeallocationOpInterfaceExternalModels(registry);
+    mlir::gpu::registerBufferDeallocationOpInterfaceExternalModels(registry);
+    mlir::gpu::registerValueBoundsOpInterfaceExternalModels(registry);
+    mlir::LLVM::registerInlinerInterface(registry);
+    mlir::NVVM::registerInlinerInterface(registry);
+    mlir::linalg::registerAllDialectInterfaceImplementations(registry);
+    mlir::linalg::registerRuntimeVerifiableOpInterfaceExternalModels(registry);
+    mlir::memref::registerAllocationOpInterfaceExternalModels(registry);
+    mlir::memref::registerBufferViewFlowOpInterfaceExternalModels(registry);
+    mlir::memref::registerRuntimeVerifiableOpInterfaceExternalModels(registry);
+    mlir::memref::registerValueBoundsOpInterfaceExternalModels(registry);
+    mlir::memref::registerMemorySlotExternalModels(registry);
 
-  mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::tensor::registerFindPayloadReplacementOpInterfaceExternalModels(
-      registry);
-  mlir::tensor::registerInferTypeOpInterfaceExternalModels(registry);
-  mlir::tensor::registerSubsetOpInterfaceExternalModels(registry);
-  mlir::tensor::registerTilingInterfaceExternalModels(registry);
-  mlir::tensor::registerValueBoundsOpInterfaceExternalModels(registry);
+    mlir::scf::registerBufferDeallocationOpInterfaceExternalModels(registry);
+    mlir::scf::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::scf::registerValueBoundsOpInterfaceExternalModels(registry);
+    mlir::shape::registerBufferizableOpInterfaceExternalModels(registry);
 
-  mlir::vector::registerBufferizableOpInterfaceExternalModels(registry);
-  mlir::vector::registerSubsetOpInterfaceExternalModels(registry);
-  mlir::vector::registerValueBoundsOpInterfaceExternalModels(registry);
-  mlir::NVVM::registerNVVMTargetInterfaceExternalModels(registry);
+    mlir::tensor::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::tensor::registerFindPayloadReplacementOpInterfaceExternalModels(registry);
+    mlir::tensor::registerInferTypeOpInterfaceExternalModels(registry);
+    mlir::tensor::registerSubsetOpInterfaceExternalModels(registry);
+    mlir::tensor::registerTilingInterfaceExternalModels(registry);
+    mlir::tensor::registerValueBoundsOpInterfaceExternalModels(registry);
 
-  // This is need for the Bufferization pass(one-shot bufferization)
-  mlir::registerAllExtensions(registry);
-  mlir::mk::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::vector::registerBufferizableOpInterfaceExternalModels(registry);
+    mlir::vector::registerSubsetOpInterfaceExternalModels(registry);
+    mlir::vector::registerValueBoundsOpInterfaceExternalModels(registry);
+    mlir::NVVM::registerNVVMTargetInterfaceExternalModels(registry);
+
+    // This is need for the Bufferization pass(one-shot bufferization)
+    mlir::registerAllExtensions(registry);
+    mlir::mk::registerBufferizableOpInterfaceExternalModels(registry);
 
   registry.insert<
       mlir::triton::TritonDialect, mlir::cf::ControlFlowDialect,

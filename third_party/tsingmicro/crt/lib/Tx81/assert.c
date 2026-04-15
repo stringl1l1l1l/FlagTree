@@ -8,7 +8,7 @@
 
 // Enable tx8 kernel assert support
 
-#include "tx81.h"
+#include "tx81_run.h"
 #include <stdarg.h>
 #include <stdio.h>
 

@@ -32,7 +32,7 @@ fi
 
 # Default values
 BUILD_TYPE="release"
-ACTION="install"
+ACTION="wheel"
 SCRIPT_NAME=$(basename "$0")
 
 # Function to display usage
@@ -110,6 +110,9 @@ build_triton() {
 
     if [ "$ACTION" == "wheel" ]; then
         build_opt=wheel
+        export TRITON_BUILD_TSINGMICRO_WHEEL=ON
+    else
+        export TRITON_BUILD_TSINGMICRO_WHEEL=OFF
     fi
 
     python3 -m pip $build_opt . --no-build-isolation -v --verbose
@@ -121,18 +124,17 @@ fi
 
 export LLVM_SYSPATH=$LLVM
 export TX8_DEPS_ROOT=$TX8_DEPS_ROOT
-export TX8_YOC_RT_THREAD_SMP=$TX8_DEPS_ROOT/tx8-yoc-rt-thread-smp
 export FLAGTREE_BACKEND=tsingmicro
 
 # debug
-# export USE_HOST_PROFILE=1
 # export NO_INTRNISIC_RUN=1
 
 echo "export TX8_DEPS_ROOT=$TX8_DEPS_ROOT"
 echo "export LLVM_SYSPATH=$LLVM_SYSPATH"
+echo "export FLAGTREE_BACKEND=$FLAGTREE_BACKEND"
 
 # synchronous temporary solution: add waitfinish after every cintrinsic exec
-export ENABLE_SYNCHRONOUS_INTRINSIC=1
+export ENABLE_SYNCHRONOUS_INTRINSIC=0
 echo "export ENABLE_SYNCHRONOUS_INTRINSIC=$ENABLE_SYNCHRONOUS_INTRINSIC"
 
 build_triton

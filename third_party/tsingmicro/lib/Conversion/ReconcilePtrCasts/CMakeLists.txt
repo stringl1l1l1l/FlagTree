@@ -1,8 +1,8 @@
-add_triton_library(ReconcilePtrCasts
+add_triton_library(TsmcReconcilePtrCasts
   ReconcilePtrCastsPass.cpp
 
   DEPENDS
-  ReconcilePtrCastsPassIncGen
+  TsmcReconcilePtrCastsPassIncGen
 
   LINK_LIBS PUBLIC
   MLIRArithDialect
