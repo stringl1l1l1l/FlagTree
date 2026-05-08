@@ -48,7 +48,7 @@ class VariableCollector(ast.NodeVisitor):
 
 class KernelDependencyAnalyzer(ast.NodeVisitor):
 
-    def __init__(self):
+    def __init__(self, kernel_globals: dict | None = None):
         self.input_params = set[str]()  # input params
         self.constexpr_params = set[str]()  # constexpr params
         self.var_definitions = dict[str, ast.AST]()  # var -> latest definition node
@@ -61,13 +61,22 @@ class KernelDependencyAnalyzer(ast.NodeVisitor):
         self.transpose_args_nodes = list[ast.AST]()  # tl.trans args
         # for tl.dot K-dim analyze
         self.dot_calls = list[ast.AST]()  # tl.dot call nodes
-        # for tl.load BLOCK_X <-> X pairing via tl.cdiv(X, BLOCK_X)
+        # for tl.load BLOCK_X <-> X pairing via tl.cdiv(X, BLOCK_X).
+        # Also stores virtual cdiv Calls synthesized from user helpers
+        # whose body wraps tl.cdiv (e.g. prev_multiple_of(K, BLOCK_K)).
         self.cdiv_calls = list[ast.Call]()  # tl.cdiv call nodes
         # desc var -> {"shape": [...], "block_shape": [...]} from make_tensor_descriptor or hook
         self.tma_device_desc_defs_map = dict[str, dict[str, list[str]]]()
         # all historical definitions per var (in order); used for arange extraction
         # to avoid losing info when later assignments overwrite earlier ones
         self.var_all_definitions = dict[str, list[ast.AST]]()
+        # Kernel's __globals__; used to resolve user-defined helper functions
+        # to their source so we can detect tl.cdiv wrappers.
+        self._kernel_globals = kernel_globals or {}
+        # Cache: helper_fn_name -> (param_idx_X, param_idx_BLOCK_X) | None.
+        # `None` means "no cdiv-wrapping pair" (also used as in-flight sentinel
+        # to break recursion cycles).
+        self._helper_cdiv_pair_cache = dict[str, tuple[int, int] | None]()
 
     # Collect function parameters and mark constexpr ones
     def visit_FunctionDef(self, node):
@@ -181,7 +190,118 @@ class KernelDependencyAnalyzer(ast.NodeVisitor):
                     if hasattr(kw, 'value') and isinstance(kw.value, ast.List):
                         for elt in kw.value.elts:
                             self.tma_args[base][kw.arg].append(elt)
+        else:
+            # User-defined helper that wraps tl.cdiv internally
+            # (e.g. `prev_multiple_of(a, b) -> tl.cdiv(a, b) * b - b`).
+            # Synthesize a virtual `tl.cdiv(args[i], args[j])` Call so the
+            # downstream BLOCK_X <-> X matching can treat it like a real cdiv.
+            virtual_cdiv = self._build_virtual_cdiv_from_helper(node)
+            if virtual_cdiv is not None:
+                self.cdiv_calls.append(virtual_cdiv)
         self.generic_visit(node)
+
+    # If `call_node` invokes a user-defined helper whose body wraps
+    # `tl.cdiv(p_X, p_BLOCK_X)` (with p_X, p_BLOCK_X being the helper's formals),
+    # build a synthetic `tl.cdiv(call_node.args[i], call_node.args[j])` Call
+    # for downstream pairing. Returns None when no such helper / pair exists.
+    #
+    # Example handled here::
+    #
+    #     def prev_multiple_of(a, b):
+    #         return tl.cdiv(a, b) * b - b
+    #     ...
+    #     prev_multiple = prev_multiple_of(K, BLOCK_K)  # virtual tl.cdiv(K, BLOCK_K)
+    #
+    # Recursion (helper -> helper -> tl.cdiv) is supported via
+    # `_get_helper_cdiv_pair`'s in-flight-cycle-breaker cache.
+    def _build_virtual_cdiv_from_helper(self, call_node) -> ast.Call | None:
+        if not isinstance(call_node.func, ast.Name):
+            return None
+        helper_name = call_node.func.id
+        pair = self._get_helper_cdiv_pair(helper_name)
+        if pair is None:
+            return None
+        i, j = pair
+        if i >= len(call_node.args) or j >= len(call_node.args):
+            return None
+        return ast.Call(
+            func=ast.Attribute(value=ast.Name(id='tl', ctx=ast.Load()), attr='cdiv', ctx=ast.Load()),
+            args=[call_node.args[i], call_node.args[j]],
+            keywords=[],
+        )
+
+    # Memoized lookup. Sets the cache to None *before* recursing to break
+    # cycles (helper A -> helper A directly or transitively).
+    def _get_helper_cdiv_pair(self, helper_name: str) -> tuple[int, int] | None:
+        if helper_name in self._helper_cdiv_pair_cache:
+            return self._helper_cdiv_pair_cache[helper_name]
+        self._helper_cdiv_pair_cache[helper_name] = None
+        pair = self._inspect_helper_for_cdiv(helper_name)
+        self._helper_cdiv_pair_cache[helper_name] = pair
+        return pair
+
+    # Walk `helper_name`'s body and find the first Call whose two args are
+    # *both* helper formals and which either (a) is `tl.cdiv` directly, or
+    # (b) is itself a Call to another helper that wraps `tl.cdiv`. Returns
+    # the (i, j) indices of those formals in helper_name's parameter list.
+    def _inspect_helper_for_cdiv(self, helper_name: str) -> tuple[int, int] | None:
+        helper_obj = self._kernel_globals.get(helper_name)
+        if helper_obj is None:
+            return None
+        fn_def = self._get_helper_fndef(helper_obj, helper_name)
+        if fn_def is None:
+            return None
+        param_names = [a.arg for a in fn_def.args.args]
+        if len(param_names) < 2:
+            return None
+
+        for sub in ast.walk(fn_def):
+            if not isinstance(sub, ast.Call):
+                continue
+            # Determine which two arg positions of `sub` are the logical
+            # (X, BLOCK_X) cdiv pair.
+            if self._is_tl_func(sub, 'cdiv') and len(sub.args) >= 2:
+                i_in_sub, j_in_sub = 0, 1
+            elif isinstance(sub.func, ast.Name):
+                inner_pair = self._get_helper_cdiv_pair(sub.func.id)
+                if inner_pair is None:
+                    continue
+                i_in_sub, j_in_sub = inner_pair
+            else:
+                continue
+            if i_in_sub >= len(sub.args) or j_in_sub >= len(sub.args):
+                continue
+            ai, aj = sub.args[i_in_sub], sub.args[j_in_sub]
+            if not (isinstance(ai, ast.Name) and isinstance(aj, ast.Name)):
+                continue
+            if ai.id in param_names and aj.id in param_names:
+                return (param_names.index(ai.id), param_names.index(aj.id))
+        return None
+
+    # Get the FunctionDef AST of a helper function object. Tries
+    # JITFunction.parse() first (cheap, already cached source), then falls
+    # back to inspect.getsource() for plain Python helpers.
+    @staticmethod
+    def _get_helper_fndef(helper_obj, helper_name: str) -> ast.FunctionDef | None:
+        if hasattr(helper_obj, 'parse') and callable(helper_obj.parse):
+            try:
+                tree = helper_obj.parse()
+                if (isinstance(tree, ast.Module) and tree.body
+                        and isinstance(tree.body[0], ast.FunctionDef)):
+                    return tree.body[0]
+            except Exception:
+                pass
+        try:
+            import inspect
+            import textwrap
+            src = textwrap.dedent(inspect.getsource(helper_obj))
+            tree = ast.parse(src)
+            for n in ast.walk(tree):
+                if isinstance(n, ast.FunctionDef) and n.name == helper_name:
+                    return n
+        except Exception:
+            return None
+        return None
 
     # Check if a Call node refers to triton.language.<func_name>.
     # Covers: tl.f(), language.f(), triton.language.f(), f()
@@ -673,7 +793,10 @@ def analyze_kernel_dependencies(jit_fn, pre_hook_fn: object | None = None) -> tu
 
     try:
         fn_ast = jit_fn.parse()
-        analyzer = KernelDependencyAnalyzer()
+        # Pass __globals__ so the analyzer can resolve user-defined helpers
+        # whose body wraps tl.cdiv (e.g. prev_multiple_of, next_multiple_of).
+        kernel_globals = getattr(jit_fn, '__globals__', None)
+        analyzer = KernelDependencyAnalyzer(kernel_globals=kernel_globals)
         analyzer.visit(fn_ast)
 
         # Analyzer 1: tl.load - tl.arange
