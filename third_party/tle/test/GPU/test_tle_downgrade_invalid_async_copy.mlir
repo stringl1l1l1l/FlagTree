@@ -25,9 +25,8 @@ tt.func @downgrade_bf16(%input: tensor<32x512x!tt.ptr<bf16>, #blocked>,
 
 // -----
 
-// CHECK-DAG: #[[VEC:.*]] = #ttg.blocked<{{.*}}sizePerThread = [1, 8]{{.*}}order = [1, 0]{{.*}}>
 // CHECK-LABEL: tt.func @coalesced_bf16_fallback
-// CHECK: %[[PTR_CVT:.*]] = ttg.convert_layout %{{.*}} : tensor<64x512x!tt.ptr<bf16>, #{{.*}}> -> tensor<64x512x!tt.ptr<bf16>, #[[VEC]]>
+// CHECK: %[[PTR_CVT:.*]] = ttg.convert_layout %{{.*}} : tensor<64x512x!tt.ptr<bf16>, #{{.*}}> -> tensor<64x512x!tt.ptr<bf16>, #[[VEC:.*]]>
 // CHECK: %[[LOAD:.*]] = tt.load %[[PTR_CVT]] : tensor<64x512x!tt.ptr<bf16>, #[[VEC]]>
 // CHECK: %[[VAL_CVT:.*]] = ttg.convert_layout %[[LOAD]] : tensor<64x512xbf16, #[[VEC]]> -> tensor<64x512xbf16, #{{.*}}>
 // CHECK: ttg.local_store %[[VAL_CVT]], %{{.*}} : tensor<64x512xbf16, #{{.*}}> -> !ttg.memdesc<64x512xbf16

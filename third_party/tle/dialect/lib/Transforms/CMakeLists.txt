@@ -13,12 +13,14 @@ add_triton_library(TritonTLETransforms
   TleOptimizeExclusiveCumsumLayouts.cpp
   TleLowerExclusiveCumsum.cpp
   TleLowerAsyncLoad.cpp
+  TleLowerPipeToNvws.cpp
   TleTileToLLVMUtils.cpp
   ExtractTileToLLVM.cpp
   InsertTileToLLVM.cpp
   TleLowerExtractTile.cpp
   TleLowerInsertTile.cpp
   TleLowerTmaCopy.cpp
+  TleScheduleTmaStoreSync.cpp
   ConvertArgToMemDesc.cpp
   RemoveRedundantCopy.cpp
   DSLRegionInline.cpp
@@ -30,6 +32,8 @@ add_triton_library(TritonTLETransforms
   LINK_LIBS PUBLIC
   TritonGPUIR
   TritonAnalysis
+  TritonIR
+  NVWSIR
 )
 
 target_include_directories(TritonTLETransforms PUBLIC

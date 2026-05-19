@@ -173,7 +173,30 @@ void CreateTokenOp::build(::mlir::OpBuilder &builder,
                           TokenLoadType loadType) {
   auto tokenType = TokenType::get(builder.getContext());
   auto resultType = RankedTensorType::get({num}, tokenType);
-  build(builder, state, resultType, num, loadType);
+  state.addTypes(resultType);
+  state.addAttribute("numBuffers", builder.getI32IntegerAttr(num));
+  state.addAttribute("loadType",
+                     TokenLoadTypeAttr::get(builder.getContext(), loadType));
+}
+
+LogicalResult CreateTokenOp::verify() {
+  if (getNumBuffers() <= 0)
+    return emitOpError("requires positive numBuffers");
+  for (StringRef attrName : {"full_count", "empty_count"}) {
+    if (auto attr = (*this)->getAttrOfType<IntegerAttr>(attrName)) {
+      if (attr.getInt() <= 0)
+        return emitOpError("requires positive ") << attrName;
+    }
+  }
+  return success();
+}
+
+LogicalResult ConsumerReleaseOp::verify() {
+  if (auto attr = (*this)->getAttrOfType<IntegerAttr>("release_count")) {
+    if (attr.getInt() <= 0)
+      return emitOpError("requires positive release_count");
+  }
+  return success();
 }
 
 void ArefPutEnterOp::setStage(Value stage) { getStageMutable().assign(stage); }
