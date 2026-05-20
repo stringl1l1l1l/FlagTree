@@ -210,7 +210,12 @@ jobs:
                   echo "Result: $OP Error (Exit code $EXIT_CODE)"
                   CRITICAL_FAILED=1
               fi
-              echo -e "\n------------------------------------------> [END] Operator: $OP | Duration: ${ELAPSED}s | Exit Code: $EXIT_CODE"
+
+              H=$((ELAPSED / 3600))
+              M=$(((ELAPSED % 3600) / 60))
+              S=$((ELAPSED % 60))
+              DURATION=$(printf "%02d:%02d:%02d" $H $M $S)
+              echo -e "\n------------------------------------------> [END] Operator: $OP | Duration: ${DURATION} | Exit Code: $EXIT_CODE"
           done
 
           if [ $CRITICAL_FAILED -ne 0 ]; then
