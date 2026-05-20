@@ -69,7 +69,7 @@ jobs:
         if: ${{ steps.check_backend.outputs.should_skip != 'true' }}
         shell: bash
         run: |
-          set -x
+          # set -x
           FLAGGEMS_BASE="/mnt/airs-business/cicd/flagtree/flagcicd-flagGems-test/nvidia"
           FLAGGEMS_DIR="${FLAGGEMS_BASE}/FlagGems"
           CONFIG_DIR="${FLAGGEMS_BASE}/config"
