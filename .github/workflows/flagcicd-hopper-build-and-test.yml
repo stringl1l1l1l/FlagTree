@@ -107,6 +107,7 @@ jobs:
           if [ -z "$MARKS" ]; then
             echo "Error: Failed to generate pytest marks"
             exit 1
+          fi
           cd "$FLAGGEMS_DIR"
           pip install -r requirements/requirements_nvidia.txt
           pip list
