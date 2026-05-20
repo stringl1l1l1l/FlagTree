@@ -74,7 +74,6 @@ jobs:
           FLAGGEMS_DIR="${FLAGGEMS_BASE}/FlagGems"
           CONFIG_DIR="${FLAGGEMS_BASE}/config"
           SCRIPTS_DIR="${FLAGGEMS_BASE}/../scripts"
-          SCRIPTS_DIR="${FLAGGEMS_BASE}/../scripts"
           IGNORE_LIST="${CONFIG_DIR}/ignore_list.txt"
           OPERATORS_YAML="${FLAGGEMS_DIR}/conf/operators.yaml"
 
