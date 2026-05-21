@@ -93,7 +93,7 @@ jobs:
 
           # 安装 FlagGems 依赖
           cd "$FLAGGEMS_DIR"
-          # pip install -r requirements/requirements_nvidia.txt
+          pip install -r requirements/requirements_nvidia.txt
           pip list
           pip install -v -e .  --no-build-isolation
           if [ $? -ne 0 ]; then
