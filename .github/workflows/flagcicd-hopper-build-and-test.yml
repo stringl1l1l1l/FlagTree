@@ -105,26 +105,26 @@ jobs:
 
           # pip install --no-cache-dir pyyaml==6.0.3
           # 生成 pytest marks 参数
-          # MARKS=$(python3  "${SCRIPTS_DIR}/parse_operators.py"  "$OPERATORS_YAML")
-          # if [ -z "$MARKS" ]; then
-          #   echo "Error: Failed to generate pytest marks"
-          #   exit 1
-          # fi
+          MARKS=$(python3  "${SCRIPTS_DIR}/parse_operators.py"  "$OPERATORS_YAML")
+          if [ -z "$MARKS" ]; then
+            echo "Error: Failed to generate pytest marks"
+            exit 1
+          fi
 
           # 打印 MARKS 字符串的前 200 个字符
-          # echo "Generated pytest marks: ${MARKS:0:200}..."
+          echo "Generated pytest marks: ${MARKS:0:200}..."
 
           # 构建 pytest 命令
-          # PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick -v"
+          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick -v --junitxml=$GITHUB_WORKSPACE/test-results.xml"
           # PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu -v"
           # 添加 ignore 参数
 
-          OPERATORS=( $(python3 "${SCRIPTS_DIR}/parse_operators.py" "$OPERATORS_YAML") )
+          # OPERATORS=( $(python3 "${SCRIPTS_DIR}/parse_operators.py" "$OPERATORS_YAML") )
           
-          if [ ${#OPERATORS[@]} -eq 0 ]; then
-            echo "Error: Failed to fetch operator list (array is empty)"
-            exit 1
-          fi
+          # if [ ${#OPERATORS[@]} -eq 0 ]; then
+          #   echo "Error: Failed to fetch operator list (array is empty)"
+          #   exit 1
+          # fi
 
           IGNORE_ARGS=""
           if [ -f "$IGNORE_LIST" ]; then       # 如果有忽略列表文件就读取它
@@ -185,72 +185,80 @@ jobs:
           # }
 
           # 运行测试 (不带超时)
-          cd "$FLAGGEMS_DIR"
+          # cd "$FLAGGEMS_DIR"
 
-          MISS_OP=0
-          CRITICAL_FAILED=0
-          # 3. 遍历数组并记录时间（保持不变）
-          for OP in "${OPERATORS[@]}"; do
-              echo -e "\n-----------------------------------------> [START] Testing Operator: $OP"
+          # MISS_OP=0
+          # CRITICAL_FAILED=0
+          # # 3. 遍历数组并记录时间（保持不变）
+          # for OP in "${OPERATORS[@]}"; do
+          #     echo -e "\n-----------------------------------------> [START] Testing Operator: $OP"
               
-              START_TIME=$(date +%s)
+          #     START_TIME=$(date +%s)
 
-              # 直接将 $OP 作为 pytest 的 -m 参数
-              EXIT_CODE=0
-              python3 -m pytest tests/ -m "$OP" --ref=cpu --quick $IGNORE_ARGS || EXIT_CODE=$?
+          #     # 直接将 $OP 作为 pytest 的 -m 参数
+          #     EXIT_CODE=0
+          #     python3 -m pytest tests/ -m "$OP" --ref=cpu --quick $IGNORE_ARGS || EXIT_CODE=$?
 
-              END_TIME=$(date +%s)
-              ELAPSED=$((END_TIME - START_TIME))
+          #     END_TIME=$(date +%s)
+          #     ELAPSED=$((END_TIME - START_TIME))
 
             
-              if [ $EXIT_CODE -eq 0 ]; then
-                  echo "Result: $OP Passed"
-              elif [ $EXIT_CODE -eq 1 ]; then
-                  echo "Result: $OP Failed (failures allowed in CI)"
-              elif [ $EXIT_CODE -eq 5 ]; then
-                  echo "Result: $OP Error (No tests collected)"
-                  MISS_OP=$((MISS_OP + 1))
-              else
-                  echo "Result: $OP Error (Exit code $EXIT_CODE)"
-                  CRITICAL_FAILED=1
-              fi
+          #     if [ $EXIT_CODE -eq 0 ]; then
+          #         echo "Result: $OP Passed"
+          #     elif [ $EXIT_CODE -eq 1 ]; then
+          #         echo "Result: $OP Failed (failures allowed in CI)"
+          #     elif [ $EXIT_CODE -eq 5 ]; then
+          #         echo "Result: $OP Error (No tests collected)"
+          #         MISS_OP=$((MISS_OP + 1))
+          #     else
+          #         echo "Result: $OP Error (Exit code $EXIT_CODE)"
+          #         CRITICAL_FAILED=1
+          #     fi
 
-              H=$((ELAPSED / 3600))
-              M=$(((ELAPSED % 3600) / 60))
-              S=$((ELAPSED % 60))
-              DURATION=$(printf "%02d:%02d:%02d" $H $M $S)
-              echo -e "\n------------------------------------------> [END] Operator: $OP | Duration: ${DURATION} | Exit Code: $EXIT_CODE"
-          done
+          #     H=$((ELAPSED / 3600))
+          #     M=$(((ELAPSED % 3600) / 60))
+          #     S=$((ELAPSED % 60))
+          #     DURATION=$(printf "%02d:%02d:%02d" $H $M $S)
+          #     echo -e "\n------------------------------------------> [END] Operator: $OP | Duration: ${DURATION} | Exit Code: $EXIT_CODE"
+          # done
 
-          if [ $CRITICAL_FAILED -ne 0 ]; then
-              echo "=========================================="
-              echo "Error: CI Failed! Some operators (pytest Exit codes are not 1 or 5) had critical errors."
-              echo "=========================================="
-              exit 1
-          else
-              echo "=========================================="
-              echo "Success: All operators tested smoothly!"
-              echo "=========================================="
+          # if [ $CRITICAL_FAILED -ne 0 ]; then
+          #     echo "=========================================="
+          #     echo "Error: CI Failed! Some operators (pytest Exit codes are not 1 or 5) had critical errors."
+          #     echo "=========================================="
+          #     exit 1
+          # else
+          #     echo "=========================================="
+          #     echo "Success: All operators tested smoothly!"
+          #     echo "=========================================="
+          #     exit 0
+          # fi
+
+
+          bash -c "$PYTEST_CMD"
+          EXIT_CODE=$?
+
+          chmod 777 $GITHUB_WORKSPACE/test-results.xml || true
+
+          if [ $EXIT_CODE -eq 0 ]; then
+              echo "All tests passed"
+              echo "FlagGems accuracy tests completed successfully"
               exit 0
+          elif [ $EXIT_CODE -eq 5 ]; then
+              echo "Error: No tests were collected. Configuration issue suspected."
+              # 可能是配置错误，应该报错
+              exit 1
+          elif [ $EXIT_CODE -eq 1 ]; then
+              echo "Warning: Some tests failed, tests exited with code $EXIT_CODE"
+              echo "FlagGems accuracy tests completed successfully (failures allowed)"
+              exit 0  # 测试失败不阻塞 CI
+          else
+              echo "Error: Tests exited with code $EXIT_CODE"
+              exit 1
           fi
 
-
-          # bash -c "$PYTEST_CMD"
-          # EXIT_CODE=$?
-
-          # if [ $EXIT_CODE -eq 0 ]; then
-          #     echo "All tests passed"
-          #     echo "FlagGems accuracy tests completed successfully"
-          #     exit 0
-          # elif [ $EXIT_CODE -eq 5 ]; then
-          #     echo "Error: No tests were collected. Configuration issue suspected."
-          #     # 可能是配置错误，应该报错
-          #     exit 1
-          # elif [ $EXIT_CODE -eq 1 ]; then
-          #     echo "Warning: Some tests failed, tests exited with code $EXIT_CODE"
-          #     echo "FlagGems accuracy tests completed successfully (failures allowed)"
-          #     exit 0  # 测试失败不阻塞 CI
-          # else
-          #     echo "Error: Tests exited with code $EXIT_CODE"
-          #     exit 1
-          # fi
+      - name: Publish Test Results
+        uses: EnricoMi/publish-unit-test-result-action@v2
+        if: always() && steps.check_backend.outputs.should_skip != 'true'
+        with:
+          files: "${{ github.workspace }}/test-results.xml"
