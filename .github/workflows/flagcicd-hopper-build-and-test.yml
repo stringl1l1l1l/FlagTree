@@ -257,8 +257,44 @@ jobs:
               exit 1
           fi
 
-      - name: Publish Test Results
-        uses: EnricoMi/publish-unit-test-result-action@v2
+      - name: Print Failed Operators Locally
         if: always() && steps.check_backend.outputs.should_skip != 'true'
-        with:
-          files: "${{ github.workspace }}/test-results.xml"
+        shell: bash
+        run: |
+          echo "=========================================="
+          echo "📊 本地解析测试结果 (test-results.xml)"
+          echo "=========================================="
+                
+          # 使用 Python 标准库解析 XML，完全不需要额外安装包和网络
+          python3 -c "
+          import xml.etree.ElementTree as ET
+          import os
+
+          xml_path = '${{ github.workspace }}/test-results.xml'
+
+          if not os.path.exists(xml_path):
+              print('⚠️ 未找到 test-results.xml 文件，可能测试步骤发生崩溃未生成。')
+              exit(0)
+
+          try:
+              tree = ET.parse(xml_path)
+              root = tree.getroot()
+                    
+              failures = []
+              # 遍历所有 testcase，查找包含 failure 或 error 的节点
+              for testcase in root.iter('testcase'):
+                  if testcase.find('failure') is not None or testcase.find('error') is not None:
+                      operator_name = testcase.get('name', 'Unknown')
+                      class_name = testcase.get('classname', 'Unknown')
+                      failures.append(f'{class_name} :: {operator_name}')
+                    
+              if failures:
+                  print('\n❌ 失败的算子列表:')
+                  for f in failures:
+                      print(f'  - {f}')
+              else:
+                  print('\n✅ 所有测试的算子均已通过！')
+                        
+          except Exception as e:
+              print(f'⚠️ 解析 XML 文件时发生错误: {e}')
+          echo "=========================================="
