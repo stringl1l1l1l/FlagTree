@@ -79,7 +79,7 @@ jobs:
           IGNORE_LIST="${CONFIG_DIR}/ignore_list.txt"
           OPERATORS_YAML="${FLAGGEMS_DIR}/conf/operators.yaml"
 
-          echo "${FLAGGEMS_BASE}"   "${CONFIG_DIR}" "${SCRIPTS_DIR}" 
+          echo "${FLAGGEMS_BASE}"   "${CONFIG_DIR}"   "${SCRIPTS_DIR}" 
 
           if [ ! -d "$FLAGGEMS_DIR" ]; then
             echo "Error: FlagGems directory not found at $FLAGGEMS_DIR"
@@ -87,13 +87,13 @@ jobs:
             exit 1
           fi
 
-          # 检查 operators.yaml 是否存在
+          # Check if the file "operators.yaml" exists
           if [ ! -f "$OPERATORS_YAML" ]; then
             echo "Error: operators.yaml not found at $OPERATORS_YAML"
             exit 1
           fi
 
-          # 安装 FlagGems 依赖
+          # Install FlagGems dependencies
           cd "$FLAGGEMS_DIR"
           # pip install -r requirements/requirements_nvidia.txt
           pip list
@@ -103,142 +103,45 @@ jobs:
               exit 1
           fi
 
-          # pip install --no-cache-dir pyyaml==6.0.3
-          # 生成 pytest marks 参数
+          # Generate pytest marks parameters
           MARKS=$(python3  "${SCRIPTS_DIR}/parse_operators.py"  "$OPERATORS_YAML")
           if [ -z "$MARKS" ]; then
             echo "Error: Failed to generate pytest marks"
             exit 1
           fi
 
-          # 打印 MARKS 字符串的前 200 个字符
+          # Print the first 200 characters of the MARKS string
           echo "Generated pytest marks: ${MARKS:0:200}..."
 
-          # 构建 pytest 命令
-          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick -v --junitxml=$GITHUB_WORKSPACE/test-results.xml"
-          # PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu -v"
-          # 添加 ignore 参数
 
-          # OPERATORS=( $(python3 "${SCRIPTS_DIR}/parse_operators.py" "$OPERATORS_YAML") )
+          # =========================================================
+          # 核心修改：通过环境变量动态加载忽略规则（零侵入、无长度限制）
+          # =========================================================
+          # 1. 传递忽略列表的文件路径给 Python 插件
+          export FLAGGEMS_IGNORE_LIST_PATH="$IGNORE_LIST"
           
-          # if [ ${#OPERATORS[@]} -eq 0 ]; then
-          #   echo "Error: Failed to fetch operator list (array is empty)"
-          #   exit 1
-          # fi
+          # 2. 将 scripts 目录加入 Python 寻址路径
+          export PYTHONPATH="${SCRIPTS_DIR}:$PYTHONPATH"
 
-          IGNORE_ARGS=""
-          if [ -f "$IGNORE_LIST" ]; then       # 如果有忽略列表文件就读取它
-            while IFS= read -r line || [[ -n "$line" ]]; do   # 成功读取一行的数据或者最后一行没有以换行符结尾
-              # 跳过空行和注释
-              line=$(echo "$line" | tr -d '[:space:]')  
-              [[ -z "$line" ]] && continue    # 如果是空行则跳过，进入下一轮循环
-              [[ "$line" == \#* ]] && continue   # 如果是以#开头的注释行，进入下一轮循环
-              IGNORE_ARGS="$IGNORE_ARGS --ignore=${FLAGGEMS_DIR}/tests/${line}"
-            done < "$IGNORE_LIST"
-          fi
+          # 3. 构建清爽的 Pytest 命令，使用 -p 参数加载 dynamic_ignore 插件
+          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick -v -p dynamic_ignore"
+          # =========================================================
 
+          
 
+          # Build the pytest command
+          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick -v ${IGNORE_ARGS}"
 
-          # 设置超时时间 (55分钟 = 3300秒)
-          # TIMEOUT=3600
+          exit 1
 
           echo "=========================================="
           echo "Running FlagGems accuracy tests"
-          # echo "Timeout: ${TIMEOUT}s (~60min)"
           echo "Quick mode: enabled"
           echo "Reference device: cpu"
           echo "=========================================="
 
-          # # 运行测试 (带超时)
-          # cd "$FLAGGEMS_DIR"
-          # # 如果command 执行失败，就执行后面的代码块
-          # timeout $TIMEOUT bash -c "$PYTEST_CMD" || {
-          #   EXIT_CODE=$?
-          #   if [ $EXIT_CODE -eq 124 ]; then   # timeout 命令的特殊退出码124，如果超时则到这里结束
-          #     echo "Warning: Tests timed after ${TIMEOUT}s"
-          #     # 超时不算失败
-          #     exit 0
-          #   else      # 如果pytest命令执行失败
-          #     echo "Warning: Some tests failed with exit code $EXIT_CODE"
-          #     # 测试失败也不阻塞 CI，只发出警告
-          #     exit 0
-          #   fi
-          # }
-
-
-          # 
-          # 运行测试 (不带超时)
-          # # 运行测试 (带超时)
-          # cd "$FLAGGEMS_DIR"
-          # # 如果command 执行失败，就执行后面的代码块
-          # timeout $TIMEOUT bash -c "$PYTEST_CMD" || {
-          #   EXIT_CODE=$?
-          #   if [ $EXIT_CODE -eq 124 ]; then   # timeout 命令的特殊退出码124，如果超时则到这里结束
-          #     echo "Warning: Tests timed after ${TIMEOUT}s"
-          #     # 超时不算失败
-          #     exit 0
-          #   else      # 如果pytest命令执行失败
-          #     echo "Warning: Some tests failed with exit code $EXIT_CODE"
-          #     # 测试失败也不阻塞 CI，只发出警告
-          #     exit 0
-          #   fi
-          # }
-
-          # 运行测试 (不带超时)
-          # cd "$FLAGGEMS_DIR"
-
-          # MISS_OP=0
-          # CRITICAL_FAILED=0
-          # # 3. 遍历数组并记录时间（保持不变）
-          # for OP in "${OPERATORS[@]}"; do
-          #     echo -e "\n-----------------------------------------> [START] Testing Operator: $OP"
-              
-          #     START_TIME=$(date +%s)
-
-          #     # 直接将 $OP 作为 pytest 的 -m 参数
-          #     EXIT_CODE=0
-          #     python3 -m pytest tests/ -m "$OP" --ref=cpu --quick $IGNORE_ARGS || EXIT_CODE=$?
-
-          #     END_TIME=$(date +%s)
-          #     ELAPSED=$((END_TIME - START_TIME))
-
-            
-          #     if [ $EXIT_CODE -eq 0 ]; then
-          #         echo "Result: $OP Passed"
-          #     elif [ $EXIT_CODE -eq 1 ]; then
-          #         echo "Result: $OP Failed (failures allowed in CI)"
-          #     elif [ $EXIT_CODE -eq 5 ]; then
-          #         echo "Result: $OP Error (No tests collected)"
-          #         MISS_OP=$((MISS_OP + 1))
-          #     else
-          #         echo "Result: $OP Error (Exit code $EXIT_CODE)"
-          #         CRITICAL_FAILED=1
-          #     fi
-
-          #     H=$((ELAPSED / 3600))
-          #     M=$(((ELAPSED % 3600) / 60))
-          #     S=$((ELAPSED % 60))
-          #     DURATION=$(printf "%02d:%02d:%02d" $H $M $S)
-          #     echo -e "\n------------------------------------------> [END] Operator: $OP | Duration: ${DURATION} | Exit Code: $EXIT_CODE"
-          # done
-
-          # if [ $CRITICAL_FAILED -ne 0 ]; then
-          #     echo "=========================================="
-          #     echo "Error: CI Failed! Some operators (pytest Exit codes are not 1 or 5) had critical errors."
-          #     echo "=========================================="
-          #     exit 1
-          # else
-          #     echo "=========================================="
-          #     echo "Success: All operators tested smoothly!"
-          #     echo "=========================================="
-          #     exit 0
-          # fi
-
-
           bash -c "$PYTEST_CMD"
           EXIT_CODE=$?
-
-          chmod 777 $GITHUB_WORKSPACE/test-results.xml || true
 
           if [ $EXIT_CODE -eq 0 ]; then
               echo "All tests passed"
@@ -256,46 +159,3 @@ jobs:
               echo "Error: Tests exited with code $EXIT_CODE"
               exit 1
           fi
-
-      - name: Print Failed Operators Locally
-        if: always() && steps.check_backend.outputs.should_skip != 'true'
-        shell: bash
-        run: |
-          echo "=========================================="
-          echo "📊 本地解析测试结果 (test-results.xml)"
-          echo "=========================================="
-                
-          # 使用 Python 标准库解析 XML，完全不需要额外安装包和网络
-          python3 -c "
-          import xml.etree.ElementTree as ET
-          import os
-
-          xml_path = '${{ github.workspace }}/test-results.xml'
-
-          if not os.path.exists(xml_path):
-              print('⚠️ 未找到 test-results.xml 文件，可能测试步骤发生崩溃未生成。')
-              exit(0)
-
-          try:
-              tree = ET.parse(xml_path)
-              root = tree.getroot()
-                    
-              failures = []
-              # 遍历所有 testcase，查找包含 failure 或 error 的节点
-              for testcase in root.iter('testcase'):
-                  if testcase.find('failure') is not None or testcase.find('error') is not None:
-                      operator_name = testcase.get('name', 'Unknown')
-                      class_name = testcase.get('classname', 'Unknown')
-                      failures.append(f'{class_name} :: {operator_name}')
-                    
-              if failures:
-                  print('\n❌ 失败的算子列表:')
-                  for f in failures:
-                      print(f'  - {f}')
-              else:
-                  print('\n✅ 所有测试的算子均已通过！')
-                        
-          except Exception as e:
-              print(f'⚠️ 解析 XML 文件时发生错误: {e}')
-          "
-          echo "=========================================="
