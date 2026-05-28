@@ -127,7 +127,7 @@ jobs:
           PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick -v -p dynamic_ignore"
           # =========================================================
 
-          exit 1
+          # exit 1
 
           echo "=========================================="
           echo "Running FlagGems accuracy tests"
