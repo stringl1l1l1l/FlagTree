@@ -32,8 +32,8 @@ jobs:
       - name: Initialize Shared NFS Cache
         shell: bash
         run: |
+          ls /root/.triton || true
           echo "$TRITON_CACHE_DIR"
-          exit 0
   
       - name: Smart Checkout
         uses: flagos-ai/FlagTree/.github/actions/smart-checkout@main
