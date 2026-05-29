@@ -61,10 +61,7 @@ jobs:
         shell: bash
         run: |
           set -x
-          whoami
-          ls ~/.triton/
-          du -sh ~/.triton/nvidia/nvcc/cuda_nvcc-linux-x86_64-12.8.93-archive
-          exit 0
+          export TRITON_HOME="/root/.triton"
           pip uninstall -y triton
           env | grep -E '^(LLVM_SYSPATH)=' >> $GITHUB_ENV || true
           MAX_JOBS=32 python3 -m pip install . --no-build-isolation
