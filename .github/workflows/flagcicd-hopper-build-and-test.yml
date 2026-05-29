@@ -70,7 +70,7 @@ jobs:
         shell: bash
         run: |
           # set -x
-          export TRITON_CACHE_DIR="/mnt/airs-business/cicd/flagtree/flagcicd-flagGems-test/nvidia/triton_cache"
+          export TRITON_CACHE_DIR="/mnt/airs-business/cicd/flagtree/flagcicd-flagGems-test/nvidia/.triton/cache"
           FLAGGEMS_BASE="/mnt/airs-business/cicd/flagtree/flagcicd-flagGems-test/nvidia"
           FLAGGEMS_DIR="${FLAGGEMS_BASE}/FlagGems"
           CONFIG_DIR="${FLAGGEMS_BASE}/config"
