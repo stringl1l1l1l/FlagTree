@@ -96,9 +96,9 @@ jobs:
 
           # Install FlagGems dependencies
           cd "$FLAGGEMS_DIR"
-          pip install -r requirements/requirements_nvidia.txt
+          # pip install -r requirements/requirements_nvidia.txt
           pip list
-          pip install -v -e .  --no-build-isolation
+          pip install -v -e .  --no-build-isolation --no-deps
           if [ $? -ne 0 ]; then
               echo "Error: Failed to install FlagGems"
               exit 1
