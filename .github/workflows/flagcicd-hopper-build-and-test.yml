@@ -13,8 +13,6 @@ concurrency:
 jobs:
   flagcicd-hopper-build-and-test:
     runs-on: [flagcicd-flagtree-nvidia3.6]
-    env:
-      TRITON_HOME: /mnt/airs-business/cicd/flagtree/flagcicd-flagGems-test/nvidia/
     container:
       image: harbor.baai.ac.cn/flagtree/flagtree-py312-torch2.8.0a0_5228986c39.nv25.05-ubuntu24.04:202605-3.6-base
       options: 
@@ -72,6 +70,7 @@ jobs:
         shell: bash
         run: |
           # set -x
+          export TRITON_CACHE_DIR="/mnt/airs-business/cicd/flagtree/flagcicd-flagGems-test/nvidia/triton_cache"
           FLAGGEMS_BASE="/mnt/airs-business/cicd/flagtree/flagcicd-flagGems-test/nvidia"
           FLAGGEMS_DIR="${FLAGGEMS_BASE}/FlagGems"
           CONFIG_DIR="${FLAGGEMS_BASE}/config"
