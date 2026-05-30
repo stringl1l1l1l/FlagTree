@@ -125,7 +125,7 @@ jobs:
           # export PYTHONPATH="${SCRIPTS_DIR}:$PYTHONPATH"
 
           # 3. 构建清爽的 Pytest 命令，使用 -p 参数加载 dynamic_ignore 插件
-          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick"
+          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --tb=short -v --ref=cpu --quick "
           # =========================================================
 
           # exit 1
