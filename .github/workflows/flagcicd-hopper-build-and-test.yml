@@ -114,7 +114,7 @@ jobs:
           # Print the first 200 characters of the MARKS string
           echo "Generated pytest marks: ${MARKS:0:200}..."
 
-
+          cd tests/
           # =========================================================
           # 核心修改：通过环境变量动态加载忽略规则（零侵入、无长度限制）
           # =========================================================
@@ -125,7 +125,7 @@ jobs:
           export PYTHONPATH="${SCRIPTS_DIR}:$PYTHONPATH"
 
           # 3. 构建清爽的 Pytest 命令，使用 -p 参数加载 dynamic_ignore 插件
-          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick -p dynamic_ignore"
+          PYTEST_CMD="python3 -m pytest -m \"$MARKS\" --ref=cpu --quick -p dynamic_ignore"
           # =========================================================
 
           # exit 1
