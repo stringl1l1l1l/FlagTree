@@ -119,13 +119,13 @@ jobs:
           # 核心修改：通过环境变量动态加载忽略规则（零侵入、无长度限制）
           # =========================================================
           # 1. 传递忽略列表的文件路径给 Python 插件
-          # export FLAGGEMS_IGNORE_LIST_PATH="$IGNORE_LIST"
+          export FLAGGEMS_IGNORE_LIST_PATH="$IGNORE_LIST"
           
           # 2. 将 scripts 目录加入 Python 寻址路径
-          # export PYTHONPATH="${SCRIPTS_DIR}:$PYTHONPATH"
+          export PYTHONPATH="${SCRIPTS_DIR}:$PYTHONPATH"
 
           # 3. 构建清爽的 Pytest 命令，使用 -p 参数加载 dynamic_ignore 插件
-          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick "
+          PYTEST_CMD="python3 -m pytest tests/ -m \"$MARKS\" --ref=cpu --quick -p dynamic_ignore"
           # =========================================================
 
           # exit 1
