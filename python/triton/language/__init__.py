@@ -34,6 +34,11 @@ from .standard import (
     zeros,
     zeros_like,
 )
+
+from triton._flagtree_backend import FLAGTREE_BACKEND
+if FLAGTREE_BACKEND not in ("ascend"):
+  from .core import async_task
+
 from .core import (
     PropagateNan,
     TRITON_MAX_TENSOR_NUMEL,
@@ -47,7 +52,7 @@ from .core import (
     arange,
     associative_scan,
     assume,
-    async_task,
+    # async_task,
     atomic_add,
     atomic_and,
     atomic_cas,
@@ -283,10 +288,6 @@ __all__ = [
     "zeros",
     "zeros_like",
 ]
-
-
-# flagtree backend specialization
-spec("language_extend_globals_and_all", globals(), __all__)
 
 
 def str_to_ty(name, c):
