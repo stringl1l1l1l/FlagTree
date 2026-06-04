@@ -1479,16 +1479,14 @@ struct SliceFromLocalOpLowering
     auto tileShapeArr = op.getTileShape();
     auto stridesAttr = op.getTileStrides();
     SmallVector<int64_t> stridesVec(
-        stridesAttr ? stridesAttr.asArrayRef().begin()
-                    : tileShapeArr.begin(),
-        stridesAttr ? stridesAttr.asArrayRef().end()
-                    : tileShapeArr.end());
+        stridesAttr ? stridesAttr.asArrayRef().begin() : tileShapeArr.begin(),
+        stridesAttr ? stridesAttr.asArrayRef().end() : tileShapeArr.end());
 
-    auto output = emitSliceFromSmem(
-        rewriter, op.getLoc(), adaptor.getSrc(), adaptor.getIndex(),
-        op.getSrc().getType().getShape(), tileShapeArr, stridesVec,
-        resultTensorTy, outputType, userAnalysis, replaced2Origin, pTagPool,
-        op);
+    auto output =
+        emitSliceFromSmem(rewriter, op.getLoc(), adaptor.getSrc(),
+                          adaptor.getIndex(), op.getSrc().getType().getShape(),
+                          tileShapeArr, stridesVec, resultTensorTy, outputType,
+                          userAnalysis, replaced2Origin, pTagPool, op);
 
     leaveTritionOp(rewriter, op.getOperation());
     rewriter.replaceOp(op, output);
@@ -1519,16 +1517,14 @@ struct DesliceToLocalOpLowering
     auto tileShapeArr = op.getTileShape();
     auto stridesAttr = op.getTileStrides();
     SmallVector<int64_t> stridesVec(
-        stridesAttr ? stridesAttr.asArrayRef().begin()
-                    : tileShapeArr.begin(),
-        stridesAttr ? stridesAttr.asArrayRef().end()
-                    : tileShapeArr.end());
+        stridesAttr ? stridesAttr.asArrayRef().begin() : tileShapeArr.begin(),
+        stridesAttr ? stridesAttr.asArrayRef().end() : tileShapeArr.end());
 
     auto output = emitDesliceToSmem(
         rewriter, op.getLoc(), adaptor.getSrc(), adaptor.getTile(),
         adaptor.getIndex(), op.getSrc().getType().getShape(), tileShapeArr,
-        stridesVec, tileTensorTy, resultTensorTy, userAnalysis,
-        replaced2Origin, pTagPool, op);
+        stridesVec, tileTensorTy, resultTensorTy, userAnalysis, replaced2Origin,
+        pTagPool, op);
 
     leaveTritionOp(rewriter, op.getOperation());
     rewriter.replaceOp(op, output);
