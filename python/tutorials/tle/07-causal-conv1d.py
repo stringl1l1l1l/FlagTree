@@ -154,7 +154,6 @@ def _causal_conv1d_fwd_kernel_v1(
                 col1 = tl.load(prior_tokens - 1 * stride_conv_state_tok, mask_w, 0.0)
                 col0 = tl.load(prior_tokens - 2 * stride_conv_state_tok, mask_w, 0.0)
             if KERNEL_WIDTH == 5:
-                col3 = tl.load(prior_tokens, mask_w, 0.0)
                 col2 = tl.load(prior_tokens - 1 * stride_conv_state_tok, mask_w, 0.0)
                 col1 = tl.load(prior_tokens - 2 * stride_conv_state_tok, mask_w, 0.0)
                 col0 = tl.load(prior_tokens - 3 * stride_conv_state_tok, mask_w, 0.0)
@@ -165,8 +164,6 @@ def _causal_conv1d_fwd_kernel_v1(
                 col1 = tl.zeros((BLOCK_N, ), dtype=x_ptr.dtype.element_ty)
             if KERNEL_WIDTH >= 4:
                 col2 = tl.zeros((BLOCK_N, ), dtype=x_ptr.dtype.element_ty)
-            if KERNEL_WIDTH >= 5:
-                col3 = tl.zeros((BLOCK_N, ), dtype=x_ptr.dtype.element_ty)
 
         if state_len <= seqlen:
             idx_tokens_last = (seqlen - state_len) + tl.arange(0, NP2_STATELEN)
@@ -242,7 +239,6 @@ def _causal_conv1d_fwd_kernel_v1(
             col1 = tl.load(prior_tokens - 1 * stride_x_token, mask_w, 0.0, cache_modifier=".ca")
             col0 = tl.load(prior_tokens - 2 * stride_x_token, mask_w, 0.0, cache_modifier=".ca")
         if KERNEL_WIDTH == 5:
-            col3 = tl.load(prior_tokens, mask_w, 0.0, cache_modifier=".ca")
             col2 = tl.load(prior_tokens - 1 * stride_x_token, mask_w, 0.0, cache_modifier=".ca")
             col1 = tl.load(prior_tokens - 2 * stride_x_token, mask_w, 0.0, cache_modifier=".ca")
             col0 = tl.load(prior_tokens - 3 * stride_x_token, mask_w, 0.0, cache_modifier=".ca")
@@ -755,8 +751,6 @@ def _causal_conv1d_fwd_kernel_v2(  # continuous batching
                 col0 = tle.extract_tile(state_tile, index=[state_len - 3, 0], tile_shape=[1, BLOCK_N]).reshape(
                     (BLOCK_N, ))
             if KERNEL_WIDTH == 5:
-                col3 = tle.extract_tile(state_tile, index=[state_len - 1, 0], tile_shape=[1, BLOCK_N]).reshape(
-                    (BLOCK_N, ))
                 col2 = tle.extract_tile(state_tile, index=[state_len - 2, 0], tile_shape=[1, BLOCK_N]).reshape(
                     (BLOCK_N, ))
                 col1 = tle.extract_tile(state_tile, index=[state_len - 3, 0], tile_shape=[1, BLOCK_N]).reshape(
@@ -770,9 +764,6 @@ def _causal_conv1d_fwd_kernel_v2(  # continuous batching
                 col1 = tl.zeros((BLOCK_N, ), dtype=x_ptr.dtype.element_ty)
             if KERNEL_WIDTH >= 4:
                 col2 = tl.zeros((BLOCK_N, ), dtype=x_ptr.dtype.element_ty)
-            if KERNEL_WIDTH >= 5:
-                col3 = tl.zeros((BLOCK_N, ), dtype=x_ptr.dtype.element_ty)
-
         # STEP 2: write back conv_state
         if state_len <= seqlen:
             idx_tokens_last = (seqlen - state_len) + tl.arange(0, NP2_STATELEN)
@@ -930,7 +921,6 @@ def _causal_conv1d_fwd_kernel_v2(  # continuous batching
         w_ptrs = w_base + (3 * stride_w_width)
         w_col3 = tl.load(w_ptrs, mask_w, other=0.0)
 
-    mask_x_1d = idx_feats < dim
     for idx_token in range(segment_len):
         acc = acc_preload
 

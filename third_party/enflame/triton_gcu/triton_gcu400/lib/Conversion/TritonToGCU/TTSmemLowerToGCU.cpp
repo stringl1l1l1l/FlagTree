@@ -1047,18 +1047,19 @@ struct MemDescToPtrOpLowering
 // Convert a linear tile index to multi-dim tile coordinates (row-major).
 //
 // The source tensor is viewed as a grid of tiles:
-//   grid[d] = srcShape[d] / tileShape[d]
+//   grid[d] = (srcShape[d] - tileShape[d]) / strides[d] + 1
 // Then linearIdx is delinearized into per-dim tile coordinates.
-//   e.g. srcShape=[64,64], tileShape=[32,32] -> grid=[2,2]
+//   e.g. srcShape=[64,64], tileShape=[32,32], strides=[32,32] -> grid=[2,2]
 //        linearIdx=3 -> coords=[1,1] (bottom-right tile)
 static SmallVector<Value> delinearizeTileIndex(OpBuilder &b, Location loc,
                                                Value linearIdx,
                                                ArrayRef<int64_t> srcShape,
-                                               ArrayRef<int64_t> tileShape) {
+                                               ArrayRef<int64_t> tileShape,
+                                               ArrayRef<int64_t> strides) {
   unsigned rank = srcShape.size();
   SmallVector<int64_t> grid(rank);
   for (unsigned d = 0; d < rank; ++d)
-    grid[d] = srcShape[d] / tileShape[d];
+    grid[d] = (srcShape[d] - tileShape[d]) / strides[d] + 1;
 
   auto i32Ty = b.getI32Type();
   Value idx = linearIdx;
@@ -1086,20 +1087,22 @@ static SmallVector<Value> delinearizeTileIndex(OpBuilder &b, Location loc,
 // Convert a linear tile index to element-level offsets in the source tensor.
 //
 // First delinearizes the index into tile coordinates, then scales each
-// coordinate by the tile size in that dimension to get the element offset.
-//   e.g. srcShape=[64,64], tileShape=[32,32], linearIdx=3
+// coordinate by the stride in that dimension to get the element offset.
+//   e.g. srcShape=[64,64], tileShape=[32,32], strides=[32,32], linearIdx=3
 //        -> coords=[1,1] -> offsets=[32,32]
 //        meaning the tile starts at row 32, col 32 of the source.
 static SmallVector<Value> computeElemOffsets(OpBuilder &b, Location loc,
                                              Value linearIdx,
                                              ArrayRef<int64_t> srcShape,
-                                             ArrayRef<int64_t> tileShape) {
-  auto coords = delinearizeTileIndex(b, loc, linearIdx, srcShape, tileShape);
+                                             ArrayRef<int64_t> tileShape,
+                                             ArrayRef<int64_t> strides) {
+  auto coords = delinearizeTileIndex(b, loc, linearIdx, srcShape, tileShape,
+                                     strides);
   unsigned rank = srcShape.size();
   SmallVector<Value> offsets(rank);
   for (unsigned d = 0; d < rank; ++d) {
     auto cst = b.create<arith::ConstantIntOp>(
-        loc, static_cast<int32_t>(tileShape[d]), 32);
+        loc, static_cast<int32_t>(strides[d]), 32);
     offsets[d] = b.create<arith::MulIOp>(loc, coords[d], cst);
   }
   return offsets;
@@ -1152,13 +1155,14 @@ static SmallVector<Value, 4> computeCombinedOffsets(OpBuilder &b, Location loc,
 static Value
 emitSliceFromSmem(OpBuilder &rewriter, Location loc, Value smemBuf,
                   Value convertedIndex, ArrayRef<int64_t> srcShape,
-                  ArrayRef<int64_t> tileShape, RankedTensorType resultTensorTy,
-                  MemRefType outputType,
+                  ArrayRef<int64_t> tileShape, ArrayRef<int64_t> strides,
+                  RankedTensorType resultTensorTy, MemRefType outputType,
                   triton::gcu::FirstLastUserAnalysis &userAnalysis,
                   std::map<Operation *, Operation *> &replaced2Origin,
                   triton::gcu::PrivateTagPool &pTagPool, Operation *op) {
   auto elemOffsets =
-      computeElemOffsets(rewriter, loc, convertedIndex, srcShape, tileShape);
+      computeElemOffsets(rewriter, loc, convertedIndex, srcShape, tileShape,
+                         strides);
   auto lastUser = userAnalysis.getLastUser(op->getResults()[0]);
   auto output = syncAllocOp(rewriter, loc, lastUser, userAnalysis,
                             replaced2Origin, outputType);
@@ -1184,13 +1188,14 @@ static Value
 emitDesliceToSmem(OpBuilder &rewriter, Location loc, Value smemBuf,
                   Value convertedTile, Value convertedIndex,
                   ArrayRef<int64_t> srcShape, ArrayRef<int64_t> tileShape,
-                  RankedTensorType tileTensorTy,
+                  ArrayRef<int64_t> strides, RankedTensorType tileTensorTy,
                   RankedTensorType resultTensorTy,
                   triton::gcu::FirstLastUserAnalysis &userAnalysis,
                   std::map<Operation *, Operation *> &replaced2Origin,
                   triton::gcu::PrivateTagPool &pTagPool, Operation *op) {
   auto elemOffsets =
-      computeElemOffsets(rewriter, loc, convertedIndex, srcShape, tileShape);
+      computeElemOffsets(rewriter, loc, convertedIndex, srcShape, tileShape,
+                         strides);
   auto firstUser = userAnalysis.getFirstUser(op->getResults()[0]);
   auto lastUser = userAnalysis.getLastUser(op->getResults()[0]);
 
@@ -1259,6 +1264,17 @@ struct TleExtractTileLowering : SharedGenericConversionPattern {
       return failure();
     auto tileShape = tileShapeAttr.asArrayRef();
 
+    // Extract strides (defaults to tileShape for backward compatibility).
+    auto stridesAttr = op->getAttrOfType<DenseI64ArrayAttr>("strides");
+    SmallVector<int64_t> stridesVec;
+    if (stridesAttr) {
+      stridesVec.assign(stridesAttr.asArrayRef().begin(),
+                         stridesAttr.asArrayRef().end());
+    } else {
+      stridesVec.assign(tileShape.begin(), tileShape.end());
+    }
+    ArrayRef<int64_t> strides = stridesVec;
+
     auto srcTensorTy = cast<RankedTensorType>(op->getOperand(0).getType());
     auto srcShape = srcTensorTy.getShape();
     auto outputType =
@@ -1269,7 +1285,7 @@ struct TleExtractTileLowering : SharedGenericConversionPattern {
       auto output = syncAllocOp(rewriter, loc, lastUser, userAnalysis,
                                 replaced2Origin, outputType);
       auto elemOffsets = computeElemOffsets(rewriter, loc, convertedIndex,
-                                            srcShape, tileShape);
+                                            srcShape, tileShape, strides);
       auto totalNumElems = triton::gcu::getTotalElemsPerThread(resultTensorTy);
       auto defaultValue = triton::gcu::createConstantZero(
           rewriter, loc, resultTensorTy.getElementType());
@@ -1306,8 +1322,8 @@ struct TleExtractTileLowering : SharedGenericConversionPattern {
 
     auto output =
         emitSliceFromSmem(rewriter, loc, smemBuf, convertedIndex, srcShape,
-                          tileShape, resultTensorTy, outputType, userAnalysis,
-                          replaced2Origin, pTagPool, op);
+                          tileShape, strides, resultTensorTy, outputType,
+                          userAnalysis, replaced2Origin, pTagPool, op);
 
     leaveTritionOp(rewriter, op);
     rewriter.replaceOp(op, output);
@@ -1362,6 +1378,17 @@ struct TleInsertTileLowering : SharedGenericConversionPattern {
     }
     ArrayRef<int64_t> tileShape = tileShapeVec;
 
+    // Extract strides (defaults to tileShape for backward compatibility).
+    auto stridesAttr = op->getAttrOfType<DenseI64ArrayAttr>("strides");
+    SmallVector<int64_t> stridesVec;
+    if (stridesAttr) {
+      stridesVec.assign(stridesAttr.asArrayRef().begin(),
+                         stridesAttr.asArrayRef().end());
+    } else {
+      stridesVec.assign(tileShapeVec.begin(), tileShapeVec.end());
+    }
+    ArrayRef<int64_t> strides = stridesVec;
+
     auto srcTensorTy = cast<RankedTensorType>(op->getOperand(0).getType());
     auto srcShape = srcTensorTy.getShape();
 
@@ -1372,7 +1399,7 @@ struct TleInsertTileLowering : SharedGenericConversionPattern {
       auto output = syncAllocOp(rewriter, loc, lastUser, userAnalysis,
                                 replaced2Origin, outputType);
       auto elemOffsets = computeElemOffsets(rewriter, loc, convertedIndex,
-                                            srcShape, tileShape);
+                                            srcShape, tileShape, strides);
 
       auto cpTag = pTagPool.getPrivateSyncTagInfo(op);
       SmallVector<Value> zeroOffsets(
@@ -1421,8 +1448,9 @@ struct TleInsertTileLowering : SharedGenericConversionPattern {
 
     auto output =
         emitDesliceToSmem(rewriter, loc, smemBuf, convertedTile, convertedIndex,
-                          srcShape, tileShape, tileTensorTy, resultTensorTy,
-                          userAnalysis, replaced2Origin, pTagPool, op);
+                          srcShape, tileShape, strides, tileTensorTy,
+                          resultTensorTy, userAnalysis, replaced2Origin,
+                          pTagPool, op);
 
     leaveTritionOp(rewriter, op);
     rewriter.replaceOp(op, output);

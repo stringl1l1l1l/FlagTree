@@ -1218,10 +1218,10 @@ public:
     if (src.getDefiningOp()->use_empty())
       rewriter.eraseOp(src.getDefiningOp());
 
-    auto tileStridesAttr = op->getAttrOfType<DenseI64ArrayAttr>("tile_strides");
+    auto stridesAttr = op->getAttrOfType<DenseI64ArrayAttr>("strides");
     auto resultTy = op->getResult(0).getType();
     auto newOp = rewriter.create<triton::gcu::SliceFromLocalOp>(
-        loc, resultTy, smemAlloc, index, tileShapeAttr, tileStridesAttr);
+        loc, resultTy, smemAlloc, index, tileShapeAttr, stridesAttr);
     rewriter.replaceOp(op, newOp.getResult());
     return success();
   }
@@ -1432,10 +1432,10 @@ public:
     if (src.getDefiningOp()->use_empty())
       rewriter.eraseOp(src.getDefiningOp());
 
-    auto tileStridesAttr = op->getAttrOfType<DenseI64ArrayAttr>("tile_strides");
+    auto stridesAttr = op->getAttrOfType<DenseI64ArrayAttr>("strides");
     auto resultTy = op->getResult(0).getType();
     auto newOp = rewriter.create<triton::gcu::DesliceToLocalOp>(
-        loc, resultTy, smemAlloc, tile, index, tileShapeAttr, tileStridesAttr);
+        loc, resultTy, smemAlloc, tile, index, tileShapeAttr, stridesAttr);
     rewriter.replaceOp(op, newOp.getResult());
     return success();
   }
