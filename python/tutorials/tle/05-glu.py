@@ -1,23 +1,3 @@
-"""
-GLU with Triton (TLE Tutorial style) — autotune fixed
-======================================================
-
-This is test_122_v1 with the baseline BLOCK_D properly autotuned per
-(N, D, dtype). Two key fixes vs the previous attempts:
-
-  1. PRE-COMPILE pass: every BLOCK_D candidate is warmed/compiled BEFORE
-     do_bench is called for timing. This avoids the trap where the first
-     compile latency of a large BLOCK_D (like 1024) is counted into the
-     do_bench result, making it look slower than BLOCK_D=256 and forcing
-     a fallback to the initial value.
-
-  2. NO swallowed exceptions. If a BLOCK_D truly cannot compile (e.g.
-     out-of-shared-memory), the error is printed so it's visible.
-
-GLU(x) = x[:, :D] * sigmoid(x[:, D:])
-where x has shape (N, 2D).
-"""
-
 # %%
 # Setup
 # -----
@@ -37,10 +17,6 @@ DEVICE = triton.runtime.driver.active.get_active_torch_device()
 def _next_pow2(x: int) -> int:
     return 1 if x <= 1 else 2 ** math.ceil(math.log2(x))
 
-
-# %%
-# Kernels (Triton baseline — test_122_v1 style: chunk + a/b pointers)
-# -------------------------------------------------------------------
 
 
 @triton.jit
@@ -86,9 +62,9 @@ def glu_extract_static(
                    mask=mask, other=0.0)
 
     a_tile = tle.extract_tile(halo, index=[0],
-                              tile_shape=[D_P2], strides=[D_P2])
+                              tile_shape=[D_P2])
     b_tile = tle.extract_tile(halo, index=[1],
-                              tile_shape=[D_P2], strides=[D_P2])
+                              tile_shape=[D_P2])
 
     a_f32     = a_tile.to(tl.float32)
     b_f32     = b_tile.to(tl.float32)
@@ -258,11 +234,6 @@ if "--only_unit_test" in sys.argv:
         for _N, _D in [(1024, 256), (4096, 1024), (8192, 4096)]:
             run_correctness(_N, _D, _dtype)
     sys.exit(0)
-
-
-# %%
-# Benchmark (test_122_v1 perf_report style, three providers)
-# ----------------------------------------------------------
 
 
 _BENCH_PROVIDERS = ["triton", "tle", "torch"]
