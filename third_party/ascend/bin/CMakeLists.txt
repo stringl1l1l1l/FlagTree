@@ -205,7 +205,7 @@ mlir_check_all_link_libraries(triton-mlir-opt)
 
 if(DEFINED CMAKE_LIBRARY_OUTPUT_DIRECTORY)
   set(_ascend_tool_targets
-    # triton-opt
+    triton-opt
     triton-mlir-opt
   )
   foreach(_tool IN LISTS _ascend_tool_targets)
