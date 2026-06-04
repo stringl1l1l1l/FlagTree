@@ -579,6 +579,14 @@ def main(argv: list[str] | None = None) -> None:
             args.tune_warmup,
             args.tune_rep,
         )
+        # Run triton correctness check before remote autotuning, because failed
+        # DSMEM kernels can leave CUDA in a state where subsequent kernels fail.
+        if args.check:
+            _run_triton(a, b, c_triton, triton_cfg.bm, triton_cfg.bn, triton_cfg.bk, triton_cfg.num_warps,
+                        triton_cfg.num_stages)
+            ref = torch.matmul(a, b)
+            torch.testing.assert_close(c_triton, ref, atol=1e-1, rtol=1e-1)
+            print("triton correctness check: PASS")
         remote_cfg = _autotune_config(
             "cluster_tle_remote_gemm",
             REMOTE_TUNE_CONFIGS,
@@ -672,8 +680,13 @@ def main(argv: list[str] | None = None) -> None:
         print("remote lowering check: PASS")
 
     if args.check:
-        _run_triton(a, b, c_triton, triton_cfg.bm, triton_cfg.bn, triton_cfg.bk, triton_cfg.num_warps,
-                    triton_cfg.num_stages)
+        ref = torch.matmul(a, b)
+        if not args.autotune:
+            # With --no-autotune, triton check wasn't done during autotuning.
+            _run_triton(a, b, c_triton, triton_cfg.bm, triton_cfg.bn, triton_cfg.bk, triton_cfg.num_warps,
+                        triton_cfg.num_stages)
+            torch.testing.assert_close(c_triton, ref, atol=1e-1, rtol=1e-1)
+            print("triton correctness check: PASS")
         _run_cluster_remote(
             a,
             b,
@@ -684,10 +697,8 @@ def main(argv: list[str] | None = None) -> None:
             remote_cfg.num_warps,
             remote_cfg.num_stages,
         )
-        ref = torch.matmul(a, b)
-        torch.testing.assert_close(c_triton, ref, atol=1e-1, rtol=1e-1)
         torch.testing.assert_close(c_remote, ref, atol=1e-1, rtol=1e-1)
-        print("correctness check: PASS")
+        print("remote correctness check: PASS")
 
     run_triton = lambda: _run_triton(a, b, c_triton, triton_cfg.bm, triton_cfg.bn, triton_cfg.bk, triton_cfg.num_warps,
                                      triton_cfg.num_stages)
