@@ -23,10 +23,10 @@ CI_DEBUG = os.environ.get("FLAGTREE_CI_DEBUG_CLUSTER_GEMM") == "1"
 if CI_DEBUG:
     os.environ.setdefault("CUDA_LAUNCH_BLOCKING", "1")
 
-import torch
-import triton
-import triton.language as tl
-import triton.experimental.tle.language as tle
+import torch  # noqa: E402
+import triton  # noqa: E402
+import triton.language as tl  # noqa: E402
+import triton.experimental.tle.language as tle  # noqa: E402
 
 BLOCK_CLUSTER_MESH = tle.device_mesh({"block_cluster": [("cluster_x", 2)]})
 
