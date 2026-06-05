@@ -485,27 +485,13 @@ def _autotune_config(
 ) -> KernelConfig:
     best_cfg = candidates[0]
     best_ms = float("inf")
-    any_success = False
     for cfg in candidates:
-        try:
-            run_fn(cfg)
-            torch.cuda.synchronize()
-            ms = triton.testing.do_bench(lambda: run_fn(cfg), warmup=warmup, rep=rep)
-            any_success = True
-        except RuntimeError as e:
-            print(f"[autotune] {name}: skip cfg={cfg} ({e})")
-            # Clear the sticky CUDA error so subsequent kernels are not affected.
-            # cudaGetLastError is the only way to clear a sticky async error.
-            import ctypes
-            cuda = ctypes.CDLL("libcudart.so")
-            cuda.cudaGetLastError()
-            continue
+        run_fn(cfg)
+        torch.cuda.synchronize()
+        ms = triton.testing.do_bench(lambda: run_fn(cfg), warmup=warmup, rep=rep)
         if ms < best_ms:
             best_ms = ms
             best_cfg = cfg
-    if not any_success:
-        print(f"[autotune] {name}: all configs failed, giving up")
-        return None
     print(f"[autotune] {name}: best cfg={best_cfg} ms={best_ms:.3f} tflops={_tflops(M, N, K, best_ms):.2f}")
     return best_cfg
 
@@ -579,14 +565,6 @@ def main(argv: list[str] | None = None) -> None:
             args.tune_warmup,
             args.tune_rep,
         )
-        # Run triton correctness check before remote autotuning, because failed
-        # DSMEM kernels can leave CUDA in a state where subsequent kernels fail.
-        _ref = torch.matmul(a, b)
-        if args.check:
-            _run_triton(a, b, c_triton, triton_cfg.bm, triton_cfg.bn, triton_cfg.bk, triton_cfg.num_warps,
-                        triton_cfg.num_stages)
-            torch.testing.assert_close(c_triton, _ref, atol=1e-1, rtol=1e-1)
-            print("triton correctness check: PASS")
         remote_cfg = _autotune_config(
             "cluster_tle_remote_gemm",
             REMOTE_TUNE_CONFIGS,
@@ -606,9 +584,6 @@ def main(argv: list[str] | None = None) -> None:
             args.tune_warmup,
             args.tune_rep,
         )
-        if remote_cfg is None:
-            print("SKIP: all cluster remote configs failed with misaligned address.")
-            return
 
     print(f"selected triton cfg: {triton_cfg}")
     print(f"selected remote cfg: {remote_cfg}")
@@ -680,13 +655,8 @@ def main(argv: list[str] | None = None) -> None:
         print("remote lowering check: PASS")
 
     if args.check:
-        if not args.autotune:
-            # With --no-autotune, compute ref and run triton check.
-            _ref = torch.matmul(a, b)
-            _run_triton(a, b, c_triton, triton_cfg.bm, triton_cfg.bn, triton_cfg.bk, triton_cfg.num_warps,
-                        triton_cfg.num_stages)
-            torch.testing.assert_close(c_triton, _ref, atol=1e-1, rtol=1e-1)
-            print("triton correctness check: PASS")
+        _run_triton(a, b, c_triton, triton_cfg.bm, triton_cfg.bn, triton_cfg.bk, triton_cfg.num_warps,
+                    triton_cfg.num_stages)
         _run_cluster_remote(
             a,
             b,
@@ -697,8 +667,10 @@ def main(argv: list[str] | None = None) -> None:
             remote_cfg.num_warps,
             remote_cfg.num_stages,
         )
-        torch.testing.assert_close(c_remote, _ref, atol=1e-1, rtol=1e-1)
-        print("remote correctness check: PASS")
+        ref = torch.matmul(a, b)
+        torch.testing.assert_close(c_triton, ref, atol=1e-1, rtol=1e-1)
+        torch.testing.assert_close(c_remote, ref, atol=1e-1, rtol=1e-1)
+        print("correctness check: PASS")
 
     run_triton = lambda: _run_triton(a, b, c_triton, triton_cfg.bm, triton_cfg.bn, triton_cfg.bk, triton_cfg.num_warps,
                                      triton_cfg.num_stages)
