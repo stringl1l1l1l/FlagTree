@@ -155,4 +155,4 @@ jobs:
         run: |
           set -x
           source ~/env.sh
-          CUDA_LAUNCH_BLOCKING=1 python3 python/tutorials/tle/04-cluster-gemm.py
+          CUDA_LAUNCH_BLOCKING=1 python3 python/tutorials/tle/04-cluster-gemm.py --no-autotune --warmup 1 --rep 1
