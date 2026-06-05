@@ -6,11 +6,11 @@ _spec_module = None
 
 def _triton_root() -> str | None:
     current_path = os.path.abspath(__file__).replace(os.sep, "/")
-    marker = "/triton/"
+    marker = "/triton"
     idx = current_path.find(marker)
     if idx == -1:
         return None
-    return current_path[:idx + len("/triton")]
+    return current_path[:idx + len(marker)]
 
 
 def _get_spec_module():
@@ -39,11 +39,11 @@ def spec_path(path_list: list):
     if not path_list or not FLAGTREE_BACKEND:
         return
     current_path = path_list[0].replace(os.sep, "/")
-    marker = "/triton/"
+    marker = "/triton"
     idx = current_path.find(marker)
     if idx == -1:
         return
-    triton_root = current_path[:idx + len("/triton")]
+    triton_root = current_path[:idx + len(marker)]
     rel_path = current_path[idx + len(marker):]
     backend_path = os.path.join(triton_root, "backends", FLAGTREE_BACKEND, "spec", "triton", rel_path)
     if os.path.isdir(backend_path) and backend_path not in path_list:

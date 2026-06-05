@@ -1,3 +1,8 @@
+# flagtree backend path specialization
+from triton.flagtree_spec import spec_path
+
+spec_path(__path__)
+
 """isort:skip_file"""
 __version__ = '3.5.1'
 
