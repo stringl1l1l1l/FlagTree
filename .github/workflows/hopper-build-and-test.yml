@@ -155,6 +155,7 @@ jobs:
         run: |
           set -x
           source ~/env.sh
+          trap 'echo "[debug] last remote candidate:"; cat /tmp/remote-candidate.txt || true' ERR
           CUDA_LAUNCH_BLOCKING=1 python3 - <<'PY'
           import importlib.util
           import pathlib
@@ -178,11 +179,26 @@ jobs:
           a = torch.randn((M, K), device="cuda", dtype=torch.float16)
           b = torch.randn((K, N), device="cuda", dtype=torch.float16)
           c_remote = torch.empty((M, N), device="cuda", dtype=torch.float16)
-          cfg = mod.KernelConfig(32, 512, 256, 4, 2)
-
+          progress = pathlib.Path("/tmp/remote-candidate.txt")
           print(f"[debug] ptr mod256 a={a.data_ptr() % 256} b={b.data_ptr() % 256} c={c_remote.data_ptr() % 256}")
-          print(f"[debug] remote fixed only launch {cfg}")
-          mod._run_cluster_remote(a, b, c_remote, cfg.bm, cfg.bn, cfg.bk, cfg.num_warps, cfg.num_stages)
-          torch.cuda.synchronize()
-          print("[debug] remote fixed only launch: PASS")
+          for idx, cfg in enumerate(mod.REMOTE_TUNE_CONFIGS):
+              progress.write_text(f"{idx}: {cfg}\n")
+              mod._run_cluster_remote(a, b, c_remote, cfg.bm, cfg.bn, cfg.bk, cfg.num_warps, cfg.num_stages)
+              torch.cuda.synchronize()
+              ms = mod.triton.testing.do_bench(
+                  lambda: mod._run_cluster_remote(
+                      a,
+                      b,
+                      c_remote,
+                      cfg.bm,
+                      cfg.bn,
+                      cfg.bk,
+                      cfg.num_warps,
+                      cfg.num_stages,
+                  ),
+                  warmup=1,
+                  rep=1,
+              )
+              progress.write_text(f"{idx}: {cfg} done ms={ms}\n")
+          print("[debug] manual remote autotune loop: PASS")
           PY
