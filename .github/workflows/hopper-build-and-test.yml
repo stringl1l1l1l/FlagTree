@@ -155,33 +155,4 @@ jobs:
         run: |
           set -x
           source ~/env.sh
-          CUDA_LAUNCH_BLOCKING=1 python3 - <<'PY'
-          import importlib.util
-          import pathlib
-          import sys
-
-          import torch
-
-          path = pathlib.Path("python/tutorials/tle/04-cluster-gemm.py")
-          spec = importlib.util.spec_from_file_location("cluster_gemm_debug", path)
-          mod = importlib.util.module_from_spec(spec)
-          sys.modules[spec.name] = mod
-          spec.loader.exec_module(mod)
-
-          skip_reason = mod._cluster_remote_support_skip_reason()
-          if skip_reason is not None:
-              print(f"SKIP: {skip_reason}")
-              raise SystemExit(0)
-
-          M = N = K = 4096
-          torch.manual_seed(0)
-          a = torch.randn((M, K), device="cuda", dtype=torch.float16)
-          b = torch.randn((K, N), device="cuda", dtype=torch.float16)
-          c_remote = torch.empty((M, N), device="cuda", dtype=torch.float16)
-          cfg = mod.KernelConfig(32, 512, 128, 4, 3)
-          print(f"[debug] ptr mod256 a={a.data_ptr() % 256} b={b.data_ptr() % 256} c={c_remote.data_ptr() % 256}")
-          print(f"[debug] remote candidate1 fixed launch {cfg}")
-          mod._run_cluster_remote(a, b, c_remote, cfg.bm, cfg.bn, cfg.bk, cfg.num_warps, cfg.num_stages)
-          torch.cuda.synchronize()
-          print("[debug] remote candidate1 fixed launch: PASS")
-          PY
+          CUDA_LAUNCH_BLOCKING=1 python3 python/tutorials/tle/04-cluster-gemm.py
