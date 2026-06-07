@@ -112,8 +112,7 @@ class _OriginalPathFinder:
         init = os.path.join(pkg_dir, "__init__.py")
         if not os.path.isfile(init):
             return None
-        return importlib.util.spec_from_file_location(
-            fullname, init, submodule_search_locations=[pkg_dir])
+        return importlib.util.spec_from_file_location(fullname, init, submodule_search_locations=[pkg_dir])
 
 
 def _protect_subpackages(original_triton_root, names):
