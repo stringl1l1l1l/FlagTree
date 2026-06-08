@@ -290,7 +290,7 @@ def _run_cluster_remote(
     N = b.shape[1]
     dot_k = _select_remote_dot_k(bk)
     use_mask = (M % bm != 0) or (N % bn != 0) or (K % bk != 0)
-    a_slots = 4 if num_stages > 2 else 2
+    a_slots = 2
     # BK=64 with 2-stage pipeline benefits from MMA-friendly shared layout in
     # the remote A path; BK=32 keeps the existing fast path.
     use_nv_mma_smem_layout = (bk == 32) or (bk == 64 and num_stages <= 2)
@@ -337,7 +337,7 @@ def _verify_remote_lowering(
     dot_k = _select_remote_dot_k(bk)
     use_mask = (M % bm != 0) or (N % bn != 0) or (K % bk != 0)
     # Keep verifier config aligned with runtime launch config.
-    a_slots = 4 if num_stages > 2 else 2
+    a_slots = 2
     use_nv_mma_smem_layout = (bk == 32) or (bk == 64 and num_stages <= 2)
     compiled = _cluster_remote_gemm_kernel.warmup(
         a,
@@ -631,7 +631,7 @@ def main(argv: list[str] | None = None) -> None:
             DOT_K=_select_remote_dot_k(remote_cfg.bk),
             CLUSTER_SIZE=2,
             USE_MASK=((args.m % remote_cfg.bm != 0) or (args.n % remote_cfg.bn != 0) or (args.k % remote_cfg.bk != 0)),
-            A_SLOTS=4 if remote_cfg.num_stages > 2 else 2,
+            A_SLOTS=2,
             USE_NV_MMA_SMEM_LAYOUT=((remote_cfg.bk == 32) or (remote_cfg.bk == 64 and remote_cfg.num_stages <= 2)),
             grid=_grid_cluster_remote(args.m, args.n, remote_cfg.bm, remote_cfg.bn),
             num_ctas=1,
