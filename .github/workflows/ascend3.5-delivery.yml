@@ -79,7 +79,7 @@ jobs:
           PYTHON_VER=${{ inputs.PYTHON_VER }}
           export FLAGTREE_WHEEL_VERSION="${WHL_VER}+${FLAGTREE_BACKEND}${CHIP}${TRITON_VER}"
 
-          RES="--index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple --trusted-host=https://resource.flagos.net"
+          RES="--index-url=https://resource.flagos.net/repository/flagos-pypi-hosted/simple"
           if python${PYTHON_VER} -m pip download --no-deps "flagtree===${FLAGTREE_WHEEL_VERSION}" -d . $RES >/dev/null 2>&1; then
             echo "❌ flagtree===${FLAGTREE_WHEEL_VERSION} already exists!"
             exit 1
@@ -89,7 +89,8 @@ jobs:
 
           rm -rf ./build ./*.egg-info
           { export FLAGTREE_PYPI_KEY=${{ inputs.FLAGTREE_PYPI_KEY }}; } 2>/dev/null
-          export TRITON_APPEND_CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"  # ascend3.5
+          export PATH=~/.flagtree/ascend/llvm-7d5de303-ubuntu-aarch64-python311-compat/bin/:${PATH}  # clang on ascend3.5
+          export TRITON_APPEND_CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
           MAX_JOBS=32 python${PYTHON_VER} setup.py bdist_wheel -d ~/dist-flagtree
           env | grep -E '^(FLAGTREE_WHEEL_VERSION)=' >> $GITHUB_ENV || true
 
