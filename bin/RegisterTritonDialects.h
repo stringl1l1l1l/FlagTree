@@ -10,8 +10,10 @@
 #include "proton/Dialect/include/Dialect/Proton/IR/Dialect.h"
 #include "proton/Dialect/include/Dialect/ProtonGPU/IR/Dialect.h"
 #include "proton/Dialect/include/Dialect/ProtonGPU/Transforms/Passes.h"
+#ifdef __TLE__
 #include "third_party/tle/dialect/include/Transforms/Passes.h"
 #include "tle/dialect/include/IR/Dialect.h" // flagtree tle raw
+#endif
 #include "triton/Dialect/Gluon/Transforms/Passes.h"
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
@@ -63,7 +65,9 @@ inline void registerTritonDialects(mlir::DialectRegistry &registry) {
   mlir::triton::nvidia_gpu::registerTritonNvidiaGPUPasses();
   mlir::triton::instrument::registerTritonInstrumentPasses();
   mlir::triton::gluon::registerGluonPasses();
+#ifdef __TLE__
   mlir::triton::tle::registerPasses(); // flagtree tle
+#endif
   mlir::test::registerTestAliasPass();
   mlir::test::registerTestAlignmentPass();
   mlir::test::registerAMDTestAlignmentPass();
@@ -132,7 +136,11 @@ inline void registerTritonDialects(mlir::DialectRegistry &registry) {
       mlir::triton::amdgpu::TritonAMDGPUDialect,
       mlir::triton::proton::ProtonDialect,
       mlir::triton::proton::gpu::ProtonGPUDialect, mlir::ROCDL::ROCDLDialect,
+#ifdef __TLE__
       mlir::triton::gluon::GluonDialect,
       mlir::triton::tle::TleDialect // flagtree tle raw
+#else
+      mlir::triton::gluon::GluonDialect
+#endif
       >();
 }

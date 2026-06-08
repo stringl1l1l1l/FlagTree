@@ -7,7 +7,9 @@
 #include "mlir/Dialect/UB/IR/UBOps.h"
 #include "mlir/IR/IRMapping.h"
 #include "mlir/Support/LLVM.h"
+#ifdef __TLE__
 #include "tle/dialect/include/IR/Dialect.h" // flagtree tle raw
+#endif
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonGPU/Transforms/Utility.h"
@@ -86,14 +88,20 @@ TritonGPUConversionTarget::TritonGPUConversionTarget(
   // Some ops from SCF are illegal
   addIllegalOp<scf::ExecuteRegionOp, scf::ParallelOp, scf::ReduceOp,
                scf::ReduceReturnOp>();
+#ifdef __TLE__
   // flagtree tle raw
   addDynamicallyLegalOp<triton::gpu::LocalAllocOp, triton::gpu::LocalStoreOp,
                         triton::gpu::LocalLoadOp>(
       [&](Operation *op) { return isDynamicallyLegal(op, typeConverter); });
+#endif
   addDynamicallyLegalDialect<arith::ArithDialect, math::MathDialect,
                              triton::TritonDialect, cf::ControlFlowDialect,
+#ifdef __TLE__
                              scf::SCFDialect, ub::UBDialect,
                              LLVM::LLVMDialect // flagtree tle raw
+#else
+                             scf::SCFDialect, ub::UBDialect
+#endif
                              >(
       [&](Operation *op) { return isDynamicallyLegal(op, typeConverter); });
 
@@ -118,6 +126,7 @@ TritonGPUConversionTarget::TritonGPUConversionTarget(
     return true;
   });
 
+#ifdef __TLE__
   addDynamicallyLegalDialect<triton::tle::TleDialect // flagtree tle raw
                              >([&](Operation *op) {
     bool hasLegalRegions = true;
@@ -126,6 +135,7 @@ TritonGPUConversionTarget::TritonGPUConversionTarget(
     }
     return hasLegalRegions && typeConverter.isLegal(op);
   });
+#endif
 }
 
 bool TritonGPUConversionTarget::isDynamicallyLegal(

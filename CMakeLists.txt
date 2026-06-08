@@ -18,8 +18,8 @@ if(FLAGTREE_BACKEND)
     add_definitions(-DFLAGTREE_BACKEND=\"${FLAGTREE_BACKEND}\")
 endif()
 
-add_definitions(-D__TLE__)
-if(NOT FLAGTREE_BACKEND)
+if(NOT FLAGTREE_BACKEND OR FLAGTREE_BACKEND STREQUAL "enflame")
+  set(FLAGTREE_TLE ON)
   add_definitions(-D__NVIDIA__)
   add_definitions(-D__AMD__)
 elseif(FLAGTREE_BACKEND STREQUAL "iluvatar")
@@ -36,6 +36,27 @@ elseif(FLAGTREE_BACKEND STREQUAL "aipu")
   set(CMAKE_CXX_COMPILER clang++-16)
   add_definitions(-D__NVIDIA__)
   add_definitions(-D__AMD__)
+elseif(FLAGTREE_BACKEND STREQUAL "ascend")
+  set(FLAGTREE_TLE ON)
+  add_definitions(-D__NVIDIA__)
+  add_definitions(-D__AMD__)
+  #set(FLAGTREE_TLE_STRUCT ON)
+  #add_definitions(-D__TLE_STRUCT__)
+  set(CMAKE_C_COMPILER clang)
+  set(CMAKE_CXX_COMPILER clang++)
+  set(FLIR_BUILD_INCUBATED ON CACHE BOOL "Build FLIR incubated passes" FORCE)
+  set(LLVM_MAJOR_VERSION_22_OR_HIGHER ON)
+  set(LLVM_MAJOR_VERSION_22_COMPATIBLE ON CACHE BOOL "AscendNPU-IR build with llvm major version 22 or later" FORCE)
+  add_definitions(-D__LLVM_MAJOR_VERSION_22_COMPATIBLE__)
+  add_compile_options("-Wno-deprecated-declarations")
+  add_compile_options("-Wno-error=deprecated-declarations")
+  # AscendNPU-IR
+  set(BISHENGIR_ENABLE_A5_UNPUBLISHED_FEATURES ON)
+  set(BISHENGIR_BUILD_STANDALONE_IR_ONLY ON)
+  set(ASCENDNPU_IR_SRC_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/ascend/AscendNPU-IR)
+  set(ASCENDNPU_IR_BINARY_DIR ${CMAKE_CURRENT_BINARY_DIR}/third_party/ascend/AscendNPU-IR)
+  include_directories(${ASCENDNPU_IR_SRC_DIR}/bishengir/include)
+  include_directories(${ASCENDNPU_IR_BINARY_DIR}/bishengir/include)
 elseif(FLAGTREE_BACKEND STREQUAL "tsingmicro")
   set(CMAKE_C_COMPILER clang)
   set(CMAKE_CXX_COMPILER clang++)
@@ -44,6 +65,31 @@ set(FLAGTREE_PLUGIN "$ENV{FLAGTREE_PLUGIN}")
 if(FLAGTREE_PLUGIN)
   add_definitions(-D__FLAGTREE_PLUGIN__)
 endif()
+if(FLAGTREE_TLE)
+  add_definitions(-D__TLE__)
+  list(APPEND LLVM_TABLEGEN_FLAGS -D__TLE__)
+endif()
+
+# FLAGTREE SPEC LIB GET FUNC
+function(get_flagtree_backend_lib lib_name output_lib)
+  set(ret FlagTree_${FLAGTREE_BACKEND}_${lib_name})
+  if(NOT TARGET ${ret})
+    set(ret "")
+  endif()
+  set(${output_lib} ${ret} PARENT_SCOPE)
+endfunction()
+
+# FLAGTREE SPEC TD FILE GET FUNC
+function(set_flagtree_backend_td output_td td_filename)
+  set(ret ${td_filename})
+  file(RELATIVE_PATH relative_path "${PROJECT_SOURCE_DIR}" "${CMAKE_CURRENT_SOURCE_DIR}")
+  get_filename_component(BACKEND_SPEC_ROOT "${BACKEND_SPEC_INCLUDE_DIR}" DIRECTORY)
+  set(BACKEND_SPEC_TD ${BACKEND_SPEC_ROOT}/${relative_path}/${td_filename})
+  if(EXISTS ${BACKEND_SPEC_TD})
+    set(ret ${BACKEND_SPEC_TD})
+  endif()
+  set(${output_td} ${ret} PARENT_SCOPE)
+endfunction()
 
 project(triton CXX C)
 include(CTest)
@@ -120,9 +166,19 @@ if(TRITON_BUILD_UT)
 endif()
 
 # Compiler flags
-set(BACKEND_INCLUDE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/third_party/${FLAGTREE_BACKEND}/include)
+set(FLAGTREE_BACKEND_DIR ${PROJECT_SOURCE_DIR}/third_party/${FLAGTREE_BACKEND})
+## flagtree spec include dir
+set(BACKEND_SPEC_INCLUDE_DIR ${FLAGTREE_BACKEND_DIR}/backend/spec/include)
+if(FLAGTREE_BACKEND AND EXISTS ${BACKEND_SPEC_INCLUDE_DIR})
+  include_directories(${BACKEND_SPEC_INCLUDE_DIR})
+endif()
+## flagtree third_party include dir
+set(BACKEND_INCLUDE_DIR ${FLAGTREE_BACKEND_DIR}/include)
 if(FLAGTREE_BACKEND AND EXISTS "${BACKEND_INCLUDE_DIR}")
   include_directories(${BACKEND_INCLUDE_DIR})
+  if(FLAGTREE_BACKEND STREQUAL "ascend")
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
+  endif()
 else()
   include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 endif()
@@ -213,6 +269,10 @@ include_directories(${LLVM_INCLUDE_DIRS})
 if(FLAGTREE_BACKEND AND EXISTS ${BACKEND_INCLUDE_DIR})
   include_directories(${PROJECT_SOURCE_DIR}/third_party/${FLAGTREE_BACKEND}/include)
   include_directories(${PROJECT_BINARY_DIR}/third_party/${FLAGTREE_BACKEND}/include) # Tablegen'd files
+  if(FLAGTREE_BACKEND STREQUAL "ascend")
+    include_directories(${PROJECT_SOURCE_DIR}/include)
+    include_directories(${PROJECT_BINARY_DIR}/include) # Tablegen'd files
+  endif()
 else()
   include_directories(${PROJECT_SOURCE_DIR}/include)
   include_directories(${PROJECT_BINARY_DIR}/include) # Tablegen'd files
@@ -238,6 +298,9 @@ if (NOT WIN32 AND NOT APPLE AND NOT BSD)
   link_libraries(stdc++fs)
 endif()
 
+if(FLAGTREE_BACKEND STREQUAL "ascend")
+  add_subdirectory(${ASCENDNPU_IR_SRC_DIR} ${ASCENDNPU_IR_BINARY_DIR})
+endif()
 
 # -----
 
@@ -247,6 +310,8 @@ if(TRITON_BUILD_PYTHON_MODULE)
   set(PYTHON_SRC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/third_party/${FLAGTREE_BACKEND}/python/src)
   if(NOT (FLAGTREE_BACKEND AND EXISTS "${PYTHON_SRC_PATH}"))
     set(PYTHON_SRC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/python/src)
+  elseif(FLAGTREE_BACKEND STREQUAL "ascend")
+    include_directories(${CMAKE_CURRENT_SOURCE_DIR}/python/src)
   endif()
   include_directories(${PYTHON_SRC_PATH})
 
@@ -258,6 +323,15 @@ if(TRITON_BUILD_PYTHON_MODULE)
   link_directories(${Python3_LIBRARY_DIRS})
   link_libraries(${Python3_LIBRARIES})
   add_link_options(${Python3_LINK_OPTIONS})
+
+  list(APPEND TRITON_PLUGIN_NAMES "tle")
+  add_subdirectory(third_party/tle)
+  #add_subdirectory(third_party/tle/dsa)
+
+  if(FLAGTREE_BACKEND STREQUAL "ascend")
+    list(APPEND TRITON_PLUGIN_NAMES "flir")
+    add_subdirectory(third_party/flir)
+  endif()
 
   if (DEFINED TRITON_PLUGIN_DIRS)
     foreach(PLUGIN_DIR ${TRITON_PLUGIN_DIRS})
@@ -280,17 +354,13 @@ if(TRITON_BUILD_PYTHON_MODULE)
     add_subdirectory(third_party/${CODEGEN_BACKEND})
   endforeach()
 
-  if (TRITON_BUILD_PROTON)
+  if(TRITON_BUILD_PROTON)
     add_definitions(-D__PROTON__)
     add_subdirectory(third_party/proton)
   endif()
   # We always build proton dialect
   list(APPEND TRITON_PLUGIN_NAMES "proton")
   add_subdirectory(third_party/proton/Dialect)
-
-  # Add TLE plugin
-  list(APPEND TRITON_PLUGIN_NAMES "tle")
-  add_subdirectory(third_party/tle)
 
   get_property(triton_libs GLOBAL PROPERTY TRITON_LIBS)
   get_property(triton_plugins GLOBAL PROPERTY TRITON_PLUGINS)
@@ -427,6 +497,17 @@ if(TRITON_BUILD_PYTHON_MODULE)
   add_compile_definitions(TRITON_BACKENDS_TUPLE=${TRITON_BACKENDS_TUPLE})
   if(FLAGTREE_BACKEND STREQUAL "cambricon")
     add_library(triton SHARED)
+  elseif(FLAGTREE_BACKEND STREQUAL "ascend")
+    set(PYTHON_ROOT_SRC_PATH ${CMAKE_CURRENT_SOURCE_DIR}/python/src)
+    set(BUFFER_IR_SRC_PATH ${FLAGTREE_BACKEND_DIR}/python/triton/extension/buffer/src)
+    include_directories(${PYTHON_ROOT_SRC_PATH})
+    add_library(triton SHARED ${PYTHON_SRC_PATH}/main.cc
+                ${PYTHON_SRC_PATH}/ir.cc
+                ${BUFFER_IR_SRC_PATH}/buffer_ir.cc
+                ${PYTHON_ROOT_SRC_PATH}/gluon_ir.cc
+                ${PYTHON_ROOT_SRC_PATH}/passes.cc
+                ${PYTHON_ROOT_SRC_PATH}/interpreter.cc
+                ${PYTHON_ROOT_SRC_PATH}/llvm.cc)
   else()
     add_library(triton SHARED ${PYTHON_SRC_PATH}/main.cc
                 ${PYTHON_SRC_PATH}/ir.cc
@@ -478,12 +559,14 @@ if(TRITON_BUILD_PYTHON_MODULE AND NOT WIN32)
 endif()
 
 if(NOT TRITON_BUILD_PYTHON_MODULE)
+  add_subdirectory(third_party/tle)
+  if(FLAGTREE_BACKEND STREQUAL "ascend")
+    add_subdirectory(third_party/flir)
+  endif()
   foreach(CODEGEN_BACKEND ${TRITON_CODEGEN_BACKENDS})
     add_subdirectory(third_party/${CODEGEN_BACKEND})
   endforeach()
   add_subdirectory(third_party/proton/Dialect)
-  # flagtree tle
-  add_subdirectory(third_party/tle)
 endif()
 
 find_package(Threads REQUIRED)
@@ -492,6 +575,9 @@ add_subdirectory(third_party/f2reduce)
 
 if(NOT FLAGTREE_BACKEND OR FLAGTREE_BACKEND MATCHES "^(aipu|tsingmicro|enflame)$")
   add_subdirectory(bin)
+  add_subdirectory(test)
+endif()
+if(FLAGTREE_BACKEND MATCHES "^(ascend)$")
   add_subdirectory(test)
 endif()
 

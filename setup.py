@@ -100,7 +100,7 @@ class BackendInstaller:
             language_dir = None
 
         tools_dir = os.path.join(backend_src_dir, "tools")
-        if not os.path.exists(tools_dir):
+        if not os.path.exists(tools_dir) or backend_name in ("flir"):
             tools_dir = None
 
         for file in ["compiler.py", "driver.py"]:
@@ -398,6 +398,7 @@ class CMakeBuildPy(build_py):
 
     def run(self) -> None:
         self.run_command('build_ext')
+        helper.write_flagtree_backend_file()
         return super().run()
 
 
@@ -627,7 +628,7 @@ def download_and_copy_dependencies():
 
 
 if helper.flagtree_backend:
-    if helper.flagtree_backend in ("aipu", "tsingmicro", "enflame"):
+    if helper.flagtree_backend in ("aipu", "tsingmicro", "enflame", "ascend"):
         backends = [
             *BackendInstaller.copy(helper.configs.default_backends + tuple(helper.configs.extend_backends)),
             *BackendInstaller.copy_externals(),
@@ -757,6 +758,7 @@ class plugin_develop(develop):
     def run(self):
         helper.uninstall_triton()
         add_links(external_only=False)
+        helper.write_flagtree_backend_file()
         super().run()
 
 
@@ -764,6 +766,7 @@ class plugin_editable_wheel(editable_wheel):
 
     def run(self):
         add_links(external_only=False)
+        helper.write_flagtree_backend_file()
         super().run()
 
 
@@ -840,8 +843,8 @@ def get_flagtree_version():
             return flagtree_ver + get_git_commit_hash().replace("+", ".")
     backend = os.environ.get("FLAGTREE_BACKEND", "")
     if backend:
-        return "0.5.0+" + backend + get_git_commit_hash().replace("+", ".")
-    return "0.5.0" + get_git_commit_hash()
+        return "0.6.0+" + backend + get_git_commit_hash().replace("+", ".")
+    return "0.6.0" + get_git_commit_hash()
 
 
 # Dynamically define supported Python versions and classifiers

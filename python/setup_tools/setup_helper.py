@@ -75,17 +75,24 @@ def enable_flagtree_third_party(name):
         return os.environ.get(f"USE_{name.upper()}", 'ON') == 'ON'
 
 
-def download_flagtree_third_party(name, condition, required=False, hock=None):
+def get_hook_instance(hook_name):
+    if not configs.activated_module:
+        return None
+    hook_instance = getattr(configs.activated_module, hook_name, None)
+    return hook_instance if callable(hook_instance) else None
+
+
+def download_flagtree_third_party(name, condition, required=False, hook=None):
     if condition:
         if enable_flagtree_third_party(name):
             submodule = utils.flagtree_submodules[name]
             downloader.download(module=submodule, required=required)
-            if callable(hock):
-                hock(third_party_base_dir=utils.flagtree_submodule_dir, backend=submodule,
-                     default_backends=configs.default_backends)
-
+            hook_func = get_hook_instance(hook)
+            if hook_func:
+                configs.default_backends = hook_func(third_party_base_dir=configs.flagtree_submodule_dir,
+                                                     backend=submodule, default_backends=configs.default_backends)
         else:
-            print(f"\033[1;33m[Note] Skip downloading {name} since USE_{name.upper()} is set to OFF\033[0m")
+            print_info(f"Skip downloading {name} since USE_{name.upper()} is set to OFF")
 
 
 def post_install():
@@ -93,6 +100,14 @@ def post_install():
         configs.activated_module.post_install()
     except Exception:
         pass
+
+
+def write_flagtree_backend_file(triton_pkg_dir=None):
+    if triton_pkg_dir is None:
+        triton_pkg_dir = Path(__file__).resolve().parents[1] / "triton"
+    backend_value = os.environ.get("FLAGTREE_BACKEND", "")
+    dest_file = Path(triton_pkg_dir) / "FLAGTREE_BACKEND"
+    dest_file.write_text(backend_value)
 
 
 class FlagTreeCache:
@@ -340,6 +355,10 @@ class CommonUtils:
         return package_dict
 
 
+def print_info(message):
+    print(f"\033[1;32m[INFO] {message}\033[0m")
+
+
 def handle_flagtree_backend():
     global ext_sourcedir
     if flagtree_backend:
@@ -385,9 +404,9 @@ else:
     print('[INFO] FlagTree Offline Build: No offline build for triton origin toolkits')
     offline_build = False
 
-download_flagtree_third_party("triton_shared", hock=utils.default.precompile_hock, condition=(not flagtree_backend))
+#download_flagtree_third_party("triton_shared", hook=utils.default.precompile_hock, condition=(not flagtree_backend))
 
-download_flagtree_third_party("flir", condition=(flagtree_backend == "aipu"), hock=utils.aipu.precompile_hock,
+download_flagtree_third_party("flir", condition=(flagtree_backend == "ascend"), hook="precompile_hook_flir",
                               required=True)
 
 handle_flagtree_backend()
@@ -449,9 +468,10 @@ cache.store(
 
 # ascend
 cache.store(
-    file="llvm-b5cc222d-ubuntu-arm64",
+    file="llvm-7d5de303-ubuntu-aarch64-python311-compat",
     condition=("ascend" == flagtree_backend),
-    url="https://oaitriton.blob.core.windows.net/public/llvm-builds/llvm-b5cc222d-ubuntu-arm64.tar.gz",
+    url=
+    "https://baai-cp-web.ks3-cn-beijing.ksyuncs.com/trans/llvm-7d5de303-ubuntu-aarch64-python311-compat_v0.6.0.tar.gz",
     pre_hock=lambda: check_env('LLVM_SYSPATH'),
     post_hock=set_llvm_env,
 )
