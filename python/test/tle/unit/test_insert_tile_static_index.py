@@ -90,7 +90,7 @@ def test_insert_tile_static_index():
     assert torch.allclose(out, expected)
 
 
-# 新增：专门测试 stride ≠ tile_shape 的 insert_tile
+# Test insert_tile where stride != tile_shape
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is required for this test")
 def test_insert_tile_with_stride():
     M, N = 256, 256

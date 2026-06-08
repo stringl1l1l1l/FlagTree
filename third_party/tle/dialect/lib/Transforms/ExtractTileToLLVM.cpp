@@ -37,7 +37,7 @@ static SmallVector<int64_t> getStrides(ExtractTileOp op) {
       s.push_back(v);
     return s;
   }
-  // 向后兼容：没有 strides 属性时退化为 tile_shape
+  // Backwards compatibility: fall back to tile_shape when strides attribute is absent
   return getTileShape(op);
 }
 

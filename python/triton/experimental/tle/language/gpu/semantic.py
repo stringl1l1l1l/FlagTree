@@ -115,7 +115,7 @@ class TLESemantic:
         # Check 3: unpack and validate type
         tile_shape_unwrapped = [s.value if hasattr(s, 'value') else s for s in tile_shape]
         strides_eff = strides if strides else tile_shape_unwrapped
-        # strides 合法性
+        # Validate strides
         if any(s <= 0 for s in strides_eff):
             raise TLESemanticError("All strides must be positive", "extract_tile")
         if len(strides_eff) != len(src_shape):
