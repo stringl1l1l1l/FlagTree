@@ -22,7 +22,6 @@ import triton.testing as triton_testing
 
 __test__ = False
 
-
 CHIP_CONFIG = {
     "nvidia": {"device_keyword": "cuda", "desc": "NVIDIA CUDA"},
     "haiguang": {"device_keyword": "cuda", "desc": "Haiguang DCU (CUDA-compatible)"},
@@ -54,7 +53,7 @@ def gelu_kernel(x_ptr, y_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 def gelu(x: torch.Tensor) -> torch.Tensor:
     n_elements = x.numel()
     y = torch.empty_like(x)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]), )
     gelu_kernel[grid](x, y, n_elements, BLOCK_SIZE=1024)
     return y
 
@@ -137,7 +136,7 @@ def add_kernel(x_ptr, y_ptr, out_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 def add(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
     n_elements = x.numel()
     out = torch.empty_like(x)
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]), )
     add_kernel[grid](x, y, out, n_elements, BLOCK_SIZE=1024)
     return out
 
@@ -223,11 +222,11 @@ def _run_cases(
 
 def run_gelu(device_type: str, device: str) -> int:
     shapes = [
-        (1024,),
-        (4096,),
-        (16384,),
-        (65536,),
-        (262144,),
+        (1024, ),
+        (4096, ),
+        (16384, ),
+        (65536, ),
+        (262144, ),
         (1024, 1024),
         (4096, 4096),
     ]
@@ -244,15 +243,15 @@ def run_gelu(device_type: str, device: str) -> int:
 
 def benchmark_gelu(device_type: str, device: str, warmup_ms: int, rep_ms: int) -> None:
     cases = [
-        (torch.float16, (1024,)),
+        (torch.float16, (1024, )),
         (torch.float16, (256, 256)),
         (torch.float16, (4, 512, 512)),
         (torch.float16, (8, 16, 64, 64)),
-        (torch.float32, (1024,)),
+        (torch.float32, (1024, )),
         (torch.float32, (256, 256)),
         (torch.float32, (4, 512, 512)),
         (torch.float32, (8, 16, 64, 64)),
-        (torch.bfloat16, (1024,)),
+        (torch.bfloat16, (1024, )),
         (torch.bfloat16, (256, 256)),
         (torch.bfloat16, (4, 512, 512)),
         (torch.bfloat16, (8, 16, 64, 64)),
