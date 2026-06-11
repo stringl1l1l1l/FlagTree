@@ -25,7 +25,6 @@ Usage
 
 import argparse
 import math
-import subprocess
 import sys
 
 import numpy as np
@@ -163,6 +162,7 @@ def torch_glu(x):
 # Two-phase: (1) warm-compile all candidates, (2) timing pass.
 # Without phase 1, the first-compile time of BLOCK_D=1024 gets folded into
 # do_bench and the autotuner mis-elects BLOCK_D=256 as "fastest".
+
 
 def _bench_one(fn, warmup=BENCH_WARMUP, rep=BENCH_REP, runs=BENCH_RUNS):
     """Run do_bench multiple times with quantiles, return stats dict."""
@@ -335,9 +335,13 @@ def run_benchmark_table(dtype_str="fp32"):
     D_vals = [256, 512, 1024, 2048, 4096]
     N = 4096
 
-    print(f"GLU Benchmark | batch={N} dim=[256,512,1024,2048,4096] | {dtype_str} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Runs={BENCH_RUNS}")
+    print(
+        f"GLU Benchmark | batch={N} dim=[256,512,1024,2048,4096] | {dtype_str} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Runs={BENCH_RUNS}"
+    )
     print()
-    print(f"{'D':<8} {'Triton mean':<12} {'p50':<12} {'p90':<12} {'TLE mean':<12} {'p50':<12} {'p90':<12} {'Speedup':<10}")
+    print(
+        f"{'D':<8} {'Triton mean':<12} {'p50':<12} {'p90':<12} {'TLE mean':<12} {'p50':<12} {'p90':<12} {'Speedup':<10}"
+    )
 
     for D in D_vals:
         _check_static_feasibility(D)
@@ -361,8 +365,7 @@ def main(argv=None):
     parser.add_argument("--dtype", type=str, default="float32", choices=["float16", "float32", "fp16", "fp32"])
     parser.add_argument("--show_plots", action="store_true", help="show plots in benchmark")
     parser.add_argument("--verbose_autotune", action="store_true", help="print autotune timing for each BLOCK_D")
-    parser.add_argument("--benchmark", action="store_true",
-                        help="print detailed benchmark table")
+    parser.add_argument("--benchmark", action="store_true", help="print detailed benchmark table")
     args = parser.parse_args(argv)
 
     dtype = _get_dtype(args.dtype)

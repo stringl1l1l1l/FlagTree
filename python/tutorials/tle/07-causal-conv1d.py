@@ -24,8 +24,6 @@ Usage
 # -----
 
 import argparse
-import subprocess
-import sys
 
 import numpy as np
 import torch
@@ -47,7 +45,6 @@ def _print_env():
 BENCH_WARMUP = 10
 BENCH_REP = 100
 BENCH_RUNS = 5  # number of runs for stddev
-
 
 # %%
 # Kernels (baseline v1)
@@ -1585,9 +1582,13 @@ def main(argv=None):
 def _run_benchmark_varlen(dim, batch, dtype):
     width = 4
     x_vals = [2048, 4096, 8192, 16384]
-    print(f"\n--- Varlen | dim={dim} batch={batch} width={width} {dtype} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Runs={BENCH_RUNS} ---")
+    print(
+        f"\n--- Varlen | dim={dim} batch={batch} width={width} {dtype} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Runs={BENCH_RUNS} ---"
+    )
     print()
-    print(f"{'seqlen':<10} {'Baseline mean':<14} {'p50':<12} {'p90':<12} {'TLE mean':<14} {'p50':<12} {'p90':<12} {'Speedup':<10} {'correctness':<12}")
+    print(
+        f"{'seqlen':<10} {'Baseline mean':<14} {'p50':<12} {'p90':<12} {'TLE mean':<14} {'p50':<12} {'p90':<12} {'Speedup':<10} {'correctness':<12}"
+    )
 
     for total_seqlen in x_vals:
         x, w, b, cs, qsl, ci, his = _make_varlen_data(dim, total_seqlen, batch, width, dtype)
@@ -1609,9 +1610,13 @@ def _run_benchmark_varlen(dim, batch, dtype):
 def _run_benchmark_update(batch, dtype):
     width = 4
     x_vals = [1024, 2048, 4096, 8192]
-    print(f"\n--- Update | batch={batch} dim=[1024,2048,4096,8192] width={width} {dtype} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Runs={BENCH_RUNS} ---")
+    print(
+        f"\n--- Update | batch={batch} dim=[1024,2048,4096,8192] width={width} {dtype} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Runs={BENCH_RUNS} ---"
+    )
     print()
-    print(f"{'dim':<8} {'Baseline mean':<14} {'p50':<12} {'p90':<12} {'TLE mean':<14} {'p50':<12} {'p90':<12} {'Speedup':<10} {'correctness':<12}")
+    print(
+        f"{'dim':<8} {'Baseline mean':<14} {'p50':<12} {'p90':<12} {'TLE mean':<14} {'p50':<12} {'p90':<12} {'Speedup':<10} {'correctness':<12}"
+    )
 
     for dim in x_vals:
         x, w, b, cs, ci = _make_update_data(dim, batch, width, dtype)

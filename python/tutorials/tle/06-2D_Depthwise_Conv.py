@@ -21,10 +21,8 @@ Usage
     python python/tutorials/tle/06-2D_Depthwise_Conv.py --benchmark --dtype float16
 """
 
-
 import argparse
 import math
-import subprocess
 import sys
 
 import numpy as np
@@ -342,17 +340,19 @@ def _bench_one(fn, warmup=BENCH_WARMUP, rep=BENCH_REP, runs=BENCH_RUNS):
     }
 
 
-
-
 def run_benchmark_table(dtype=torch.float32):
     """Print a detailed benchmark table with latency, p50, p90, throughput, speedup, and regression."""
     H_vals = [112, 128, 256, 512]
     C, KH, KW, TOH, TOW, TC = 64, 5, 5, 4, 4, 64
     dtype_str = "fp16" if dtype == torch.float16 else "fp32"
 
-    print(f"2D Depthwise Conv | H=[112,128,256,512] W=H C={C} K={KH}x{KW} | layout=HWC {dtype_str} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Runs={BENCH_RUNS}")
+    print(
+        f"2D Depthwise Conv | H=[112,128,256,512] W=H C={C} K={KH}x{KW} | layout=HWC {dtype_str} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Runs={BENCH_RUNS}"
+    )
     print()
-    print(f"{'H':<8} {'Triton mean':<12} {'p50':<12} {'p90':<12} {'TLE mean':<12} {'p50':<12} {'p90':<12} {'Speedup':<10}")
+    print(
+        f"{'H':<8} {'Triton mean':<12} {'p50':<12} {'p90':<12} {'TLE mean':<12} {'p50':<12} {'p90':<12} {'Speedup':<10}"
+    )
 
     for H in H_vals:
         inp, wgt = _make_input(H, H, C, KH, KW, dtype)
@@ -378,8 +378,7 @@ def main(argv=None):
     parser.add_argument("--TC", type=int, default=64)
     parser.add_argument("--dtype", type=str, default="float32", choices=["float16", "float32", "fp16", "fp32"])
     parser.add_argument("--show_plots", action="store_true", help="show plots in benchmark")
-    parser.add_argument("--benchmark", action="store_true",
-                        help="print detailed benchmark table")
+    parser.add_argument("--benchmark", action="store_true", help="print detailed benchmark table")
     args = parser.parse_args(argv)
 
     dtype = _get_dtype(args.dtype)

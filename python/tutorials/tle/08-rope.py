@@ -25,8 +25,6 @@ Usage
 
 import argparse
 import random
-import subprocess
-import sys
 
 import torch
 import triton
@@ -651,15 +649,17 @@ def _robust_bench(fn, reset_fn):
     }
 
 
-
-
 def _run_benchmark_table(title, configs, dtype, rotary_interleaved, rope_v1_fn, rope_v2_fn, inplace):
     """Print a benchmark table for a set of (batch, seq_len, q_heads, k_heads, head_dim)."""
     mode = "inplace" if inplace else "outplace"
-    print(f"\n--- {title} [{mode}] | {dtype} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Rounds={BENCH_ROUNDS} Trim={BENCH_TRIM} ---")
+    print(
+        f"\n--- {title} [{mode}] | {dtype} | Warmup={BENCH_WARMUP} Rep={BENCH_REP} Rounds={BENCH_ROUNDS} Trim={BENCH_TRIM} ---"
+    )
     print()
-    print(f"{'batch':<6} {'seq_len':<8} {'q_heads':<8} {'k_heads':<8} {'head_dim':<9} "
-          f"{'Baseline mean':<14} {'p50':<12} {'p90':<12} {'TLE mean':<14} {'p50':<12} {'p90':<12} {'Speedup':<10} {'correctness':<12}")
+    print(
+        f"{'batch':<6} {'seq_len':<8} {'q_heads':<8} {'k_heads':<8} {'head_dim':<9} "
+        f"{'Baseline mean':<14} {'p50':<12} {'p90':<12} {'TLE mean':<14} {'p50':<12} {'p90':<12} {'Speedup':<10} {'correctness':<12}"
+    )
 
     for batch, seq_len, q_heads, k_heads, head_dim in configs:
         torch.manual_seed(0)
