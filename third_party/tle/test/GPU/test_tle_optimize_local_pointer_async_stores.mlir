@@ -71,8 +71,8 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 2 : i32, ttg.targ
 #smem = #ttg.shared_memory
 
 module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 2 : i32, ttg.target = "cuda:90", "ttg.threads-per-warp" = 32 : i32} {
-  // CHECK-LABEL: tt.func @group_independent_async_stores
-  tt.func @group_independent_async_stores(%gptr0: tensor<64x128x!tt.ptr<bf16>, #blocked>, %gptr1: tensor<64x128x!tt.ptr<bf16>, #blocked>) {
+  // CHECK-LABEL: tt.func @independent_async_stores_keep_single_token_chains
+  tt.func @independent_async_stores_keep_single_token_chains(%gptr0: tensor<64x128x!tt.ptr<bf16>, #blocked>, %gptr1: tensor<64x128x!tt.ptr<bf16>, #blocked>) {
     %smem0 = ttg.local_alloc : () -> !ttg.memdesc<64x128xbf16, #shared, #smem, mutable>
     %smem1 = ttg.local_alloc : () -> !ttg.memdesc<64x128xbf16, #shared, #smem, mutable>
     %row = tt.make_range {end = 64 : i32, start = 0 : i32} : tensor<64xi32, #ttg.slice<{dim = 1, parent = #blocked}>>
@@ -85,11 +85,13 @@ module attributes {"ttg.num-ctas" = 1 : i32, "ttg.num-warps" = 2 : i32, ttg.targ
     %ptr1 = "tle.local_pointers"(%smem1, %rowb, %colb) : (!ttg.memdesc<64x128xbf16, #shared, #smem, mutable>, tensor<64x128xi32, #blocked>, tensor<64x128xi32, #blocked>) -> tensor<64x128x!tt.ptr<bf16, 3>, #blocked>
     %v0 = tt.load %gptr0 : tensor<64x128x!tt.ptr<bf16>, #blocked>
     // CHECK: %[[TOK0:.*]] = ttg.async_copy_global_to_local %{{.*}}, %{{.*}} {tle.local_ptr_async_store}
+    // CHECK: %[[COMMIT0:.*]] = ttg.async_commit_group tokens %[[TOK0]]
+    // CHECK: ttg.async_wait %[[COMMIT0]] {num = 0 : i32}
     tt.store %ptr0, %v0 : tensor<64x128x!tt.ptr<bf16, 3>, #blocked>
     %v1 = tt.load %gptr1 : tensor<64x128x!tt.ptr<bf16>, #blocked>
     // CHECK: %[[TOK1:.*]] = ttg.async_copy_global_to_local %{{.*}}, %{{.*}} {tle.local_ptr_async_store}
-    // CHECK: %[[COMMIT:.*]] = ttg.async_commit_group tokens %[[TOK0]], %[[TOK1]]
-    // CHECK: ttg.async_wait %[[COMMIT]] {num = 0 : i32}
+    // CHECK: %[[COMMIT1:.*]] = ttg.async_commit_group tokens %[[TOK1]]
+    // CHECK: ttg.async_wait %[[COMMIT1]] {num = 0 : i32}
     // CHECK-NOT: tt.store
     tt.store %ptr1, %v1 : tensor<64x128x!tt.ptr<bf16, 3>, #blocked>
     tt.return
