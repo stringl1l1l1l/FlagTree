@@ -37,13 +37,10 @@ void setDeferredMetadataAttrs(tle::DSLRegionOp op, OpBuilder &builder,
     op->setAttr("tle_raw.source_id", builder.getStringAttr(sourceId));
 }
 
-tle::DSLRegionOp createDSLRegionOp(TritonOpBuilder &self,
-                                   ArrayRef<Type> outputTys,
-                                   ArrayRef<Value> operands,
-                                   std::string_view regionDialect,
-                                   std::string_view argDialect,
-                                   ArrayRef<int64_t> aliasOperandIndices,
-                                   std::string_view hint) {
+tle::DSLRegionOp createDSLRegionOp(
+    TritonOpBuilder &self, ArrayRef<Type> outputTys, ArrayRef<Value> operands,
+    std::string_view regionDialect, std::string_view argDialect,
+    ArrayRef<int64_t> aliasOperandIndices, std::string_view hint) {
   OpBuilder &builder = self.getBuilder();
   SmallVector<int32_t> outputIndices(aliasOperandIndices.begin(),
                                      aliasOperandIndices.end());
@@ -86,13 +83,11 @@ computeAliasOperandIndices(TritonOpBuilder &self, std::string_view text,
   return std::vector<int64_t>(result.begin(), result.end());
 }
 
-tle::DSLRegionOp
-createTLERawRegionByLLVMFunc(TritonOpBuilder &self, std::string_view text,
-                             std::string_view regionDialect,
-                             std::string_view argDialect,
-                             const std::vector<Value> &args,
-                             const std::vector<int64_t> &aliasOperandIndices,
-                             std::string_view hint) {
+tle::DSLRegionOp createTLERawRegionByLLVMFunc(
+    TritonOpBuilder &self, std::string_view text,
+    std::string_view regionDialect, std::string_view argDialect,
+    const std::vector<Value> &args,
+    const std::vector<int64_t> &aliasOperandIndices, std::string_view hint) {
   ParserConfig config(self.getContext());
   OwningOpRef<ModuleOp> module = parseSourceString<ModuleOp>(text, config);
   assert(module && "Failed to parse LLVM IR text");
@@ -138,9 +133,9 @@ createTLERawRegionByLLVMFunc(TritonOpBuilder &self, std::string_view text,
             });
 
   SmallVector<Value> operands(args.begin(), args.end());
-  tle::DSLRegionOp dslRegionOp = createDSLRegionOp(
-      self, outputTys, operands, regionDialect, argDialect, aliasOperandIndices,
-      hint);
+  tle::DSLRegionOp dslRegionOp =
+      createDSLRegionOp(self, outputTys, operands, regionDialect, argDialect,
+                        aliasOperandIndices, hint);
   OpBuilder::InsertionGuard guard(builder);
   Region &body = dslRegionOp.getBody();
   SmallVector<Type> operandTys = llvm::map_to_vector(
@@ -191,21 +186,20 @@ createTLERawRegionByLLVMFunc(TritonOpBuilder &self, std::string_view text,
   return dslRegionOp;
 }
 
-tle::DSLRegionOp
-createTLERawRegionDeferred(TritonOpBuilder &self, std::string_view sourceId,
-                           std::string_view regionDialect,
-                           std::string_view argDialect,
-                           const std::vector<Value> &args,
-                           const std::vector<int64_t> &aliasOperandIndices,
-                           std::string_view hint) {
+tle::DSLRegionOp createTLERawRegionDeferred(
+    TritonOpBuilder &self, std::string_view sourceId,
+    std::string_view regionDialect, std::string_view argDialect,
+    const std::vector<Value> &args,
+    const std::vector<int64_t> &aliasOperandIndices, std::string_view hint) {
   OpBuilder &builder = self.getBuilder();
-  SmallVector<Type> outputTys = llvm::map_to_vector(
-      aliasOperandIndices,
-      [&](int64_t idx) -> Type { return args[idx].getType(); });
+  SmallVector<Type> outputTys =
+      llvm::map_to_vector(aliasOperandIndices, [&](int64_t idx) -> Type {
+        return args[idx].getType();
+      });
   SmallVector<Value> operands(args.begin(), args.end());
-  tle::DSLRegionOp dslRegionOp = createDSLRegionOp(
-      self, outputTys, operands, regionDialect, argDialect, aliasOperandIndices,
-      hint);
+  tle::DSLRegionOp dslRegionOp =
+      createDSLRegionOp(self, outputTys, operands, regionDialect, argDialect,
+                        aliasOperandIndices, hint);
   setDeferredMetadataAttrs(dslRegionOp, builder, sourceId);
 
   OpBuilder::InsertionGuard guard(builder);

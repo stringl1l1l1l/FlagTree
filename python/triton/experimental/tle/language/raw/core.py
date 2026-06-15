@@ -23,8 +23,7 @@ def _wrap_results(args, alias_indices, dsl_region_op, *, smem: bool):
                 aliased.type.storage,
                 aliased.type.layout,
                 aliased.type.semantic,
-            )
-            for result, aliased in zip(results, aliased_args)
+            ) for result, aliased in zip(results, aliased_args)
         ]
         if len(buffer_tensors) == 1:
             return buffer_tensors[0]
@@ -49,28 +48,20 @@ def _tle_raw_call(func, args, *, output_indices, hint, smem, _semantic):
             raise RuntimeError("deferred tle_raw.call requires explicit output_indices=")
         alias_indices = output_indices
         source_id = func.register_pending_source(hint=hint)
-        dsl_region_op = func.create_region_deferred(
-            _semantic.builder, source_id, handles, alias_indices, hint
-        )
+        dsl_region_op = func.create_region_deferred(_semantic.builder, source_id, handles, alias_indices, hint)
     else:
         context = _semantic.builder.get_context()
         llvm = func.make_llvm(context)
         alias_indices = _resolve_alias_indices(func, llvm, handles, output_indices, _semantic)
-        dsl_region_op = func.create_region_by_llvm(
-            _semantic.builder, llvm, handles, alias_indices, hint
-        )
+        dsl_region_op = func.create_region_by_llvm(_semantic.builder, llvm, handles, alias_indices, hint)
     return _wrap_results(args, alias_indices, dsl_region_op, smem=smem)
 
 
 @builtin
 def call(func, args, output_indices=None, hint="", _semantic=None):
-    return _tle_raw_call(
-        func, args, output_indices=output_indices, hint=hint, smem=False, _semantic=_semantic
-    )
+    return _tle_raw_call(func, args, output_indices=output_indices, hint=hint, smem=False, _semantic=_semantic)
 
 
 @builtin
 def call_smem(func, args, output_indices=None, hint="", _semantic=None):
-    return _tle_raw_call(
-        func, args, output_indices=output_indices, hint=hint, smem=True, _semantic=_semantic
-    )
+    return _tle_raw_call(func, args, output_indices=output_indices, hint=hint, smem=True, _semantic=_semantic)

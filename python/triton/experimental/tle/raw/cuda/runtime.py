@@ -67,10 +67,8 @@ class CUDAJITFunction(object):
 
     def register_pending_source(self, *, hint: str = "") -> str:
         if not self.extern_func_name:
-            raise RuntimeError(
-                "deferred tle_raw CUDA source requires extern_func_name= "
-                "(the device function symbol in the .cu file)"
-            )
+            raise RuntimeError("deferred tle_raw CUDA source requires extern_func_name= "
+                               "(the device function symbol in the .cu file)")
         return register_source(
             region_dialect=self.region_dialect,
             extern_func_name=self.extern_func_name,
