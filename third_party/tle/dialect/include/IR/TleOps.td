@@ -248,6 +248,13 @@ def Tle_RemotePointersOp : Tle_Op<"remote_pointers", [Pure]> {
   let hasVerifier = 1;
 }
 
+def Tle_GetLocalPeOp : Tle_Op<"get_local_pe"> {
+  let summary = "Get local PE id";
+  let results = (outs I32:$result);
+  let assemblyFormat = "attr-dict `:` type($result)";
+  let hasVerifier = 1;
+}
+
 def Tle_DSLRegionOp : Tle_Op<"dsl_region", [IsolatedFromAbove, MemDescViewTrait,
                                             RecursiveMemoryEffects]> {
   let arguments = (ins
