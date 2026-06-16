@@ -9,6 +9,7 @@ add_triton_library(TleToLLVM
     TMAStoreCommitGroupOpToLLVM.cpp
     ViewOpToLLVM.cpp
     WGMMAFenceOpToLLVM.cpp
+    GetLocalPeOpToLLVM.cpp
 
     DEPENDS
     TleTableGen

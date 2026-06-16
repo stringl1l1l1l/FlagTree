@@ -27,31 +27,23 @@ def _as_positive_int(value: Any, label: str) -> int:
     return value
 
 
-# def extern_call(self, symbol: str, args: List[TensorTy], ret_types: List[tl.dtype],
-#                 is_pure: bool = True) -> TensorTy:
-#     arg_handles = [arg.handle for arg in args]
-#     builder = self.builder
-#     ret_ir_types = [t.to_ir(builder) for t in ret_types]
-#     result = builder.create_extern_call(symbol, arg_handles, ret_ir_types, is_pure)
-#     return self.tensor(result, ret_types[0])
-
 
 # Get the current device id
 @tl.builtin
-def my_pe(_semantic=None, ret_dtype=tl.int32):
+def my_pe(dev_mem_ptr, _semantic=None, ret_dtype=tl.int32):
     builder = _semantic.builder
     ret_ir_ty = ret_dtype.to_ir(builder)
-    result = builder.create_my_pe(ret_ir_ty)
-    return tl.tensor(result, ret_ir_ty)
+    result = builder.get_my_pe(ret_ir_ty, dev_mem_ptr)
+    return tl.tensor(result, ret_dtype)
 
 
 # The number of devices in the world
 @tl.builtin
-def n_pes(_semantic=None, ret_dtype=tl.int32):
+def n_pes(dev_mem_ptr, _semantic=None, ret_dtype=tl.int32):
     builder = _semantic.builder
     ret_ir_ty = ret_dtype.to_ir(builder)
-    result = builder.create_n_pes()
-    return tl.tensor(result, ret_ir_ty)
+    result = builder.create_n_pes(ret_ir_ty, dev_mem_ptr)
+    return tl.tensor(result, ret_dtype)
 
 
 @dataclass

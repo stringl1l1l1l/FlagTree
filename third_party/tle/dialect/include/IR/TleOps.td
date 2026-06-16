@@ -250,8 +250,10 @@ def Tle_RemotePointersOp : Tle_Op<"remote_pointers", [Pure]> {
 
 def Tle_GetLocalPeOp : Tle_Op<"get_local_pe"> {
   let summary = "Get local PE id";
+  let arguments = (ins
+    Tle_LocalPointerResultType:$src
+  );
   let results = (outs I32:$result);
-  let assemblyFormat = "attr-dict `:` type($result)";
   let hasVerifier = 1;
 }
 

@@ -25,6 +25,7 @@
 #include "tle/dialect/include/Conversion/TleToLLVM/DistributedBarrierOpToLLVM.h"
 #include "tle/dialect/include/Conversion/TleToLLVM/ExclusiveCumsumOpToLLVM.h"
 #include "tle/dialect/include/Conversion/TleToLLVM/ExtractOpToLLVM.h"
+#include "tle/dialect/include/Conversion/TleToLLVM/GetLocalPeOpToLLVM.h"
 #include "tle/dialect/include/Conversion/TleToLLVM/LocalPointersOpToLLVM.h"
 #include "tle/dialect/include/Conversion/TleToLLVM/PackOpToLLVM.h"
 #include "tle/dialect/include/IR/Dialect.h"
@@ -110,6 +111,7 @@ public:
           return hasLegalRegions && typeConverter.isLegal(op);
         });
     addLegalOp<tle::RemotePointersOp>();
+    addLegalOp<tle::GetLocalPeOp>();
     // Allow non-TLE ops to remain during this partial conversion.
     markUnknownOpDynamicallyLegal([](Operation *) -> bool { return true; });
   }
@@ -174,6 +176,8 @@ struct ConvertTritonGPUToLLVM
                                                       benefit);
       mlir::triton::tle::populateDistributedBarrierOpToLLVMPatterns(
           typeConverter, patterns, benefit);
+      mlir::triton::tle::populateGetLocalPeOpToLLVMPatterns(typeConverter,
+                                                            patterns, benefit);
       mlir::triton::tle::populateLocalPointersOpToLLVMPatterns(
           typeConverter, targetInfo, patterns, benefit);
       mlir::triton::tle::populateExtractTileOpToLLVMPatterns(

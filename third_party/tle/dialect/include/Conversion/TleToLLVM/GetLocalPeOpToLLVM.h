@@ -1,11 +1,14 @@
 #ifndef TLE_CONVERSION_TLETOLLVM_GETLOCALPEOPTOLLVM_H
 #define TLE_CONVERSION_TLETOLLVM_GETLOCALPEOPTOLLVM_H
 
-#include "mlir/IR/Value.h"
+#include "mlir/Conversion/LLVMCommon/TypeConverter.h"
+// #include "triton/Conversion/TritonGPUToLLVM/TargetInfoBase.h"
 
 namespace mlir::triton::tle {
 
-unsigned inferTlePointerLayoutVectorHint(Value ptr);
+void populateGetLocalPeOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
+                                        RewritePatternSet &patterns,
+                                        PatternBenefit benefit);
 
 } // namespace mlir::triton::tle
 
