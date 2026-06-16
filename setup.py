@@ -940,9 +940,4 @@ _setup_kwargs = dict(
     },
 )
 
-# Apply mthreads package overrides for non-editable installs
-if helper.flagtree_backend == "mthreads" and "editable_wheel" not in sys.argv:
-    from python.setup_tools.utils.mthreads import apply_mthreads_setup_args
-    apply_mthreads_setup_args(_setup_kwargs)
-
 setup(**_setup_kwargs)
