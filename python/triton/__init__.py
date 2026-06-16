@@ -6,6 +6,7 @@ __version__ = '3.6.0'
 
 # flagtree backend path specialization
 from .flagtree_spec import spec_path
+
 spec_path(__path__)
 
 # submodules
