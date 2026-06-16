@@ -28,6 +28,8 @@ class MLIRJITFunction(object):
             "cse",
         ])
         self.context: Final[ir.Context] = ir.Context() if context is None else context
+        self.region_dialect: Final[str] = "mlir"
+        self.arg_dialect: Final[str] = "llvm"
         self.__triton_builtin__: Final[bool] = True
 
     def __deepcopy__(self, memo: Dict[int, Any]) -> MLIRJITFunction:
@@ -71,6 +73,16 @@ class MLIRJITFunction(object):
 
     def make_llvm(self, context=None) -> str:
         return f"{self.ll}"
+
+    def create_region_by_llvm(self, builder, llvm: str, handles, alias_indices, hint: str = ""):
+        return builder.create_tle_raw_region_by_llvm_func(
+            llvm,
+            self.region_dialect,
+            self.arg_dialect,
+            handles,
+            alias_indices,
+            hint,
+        )
 
     @cached_property
     def src(self) -> str:
