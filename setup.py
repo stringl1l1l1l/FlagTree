@@ -881,7 +881,7 @@ readme_path = os.path.join(get_base_dir(), "README.md")
 with open(readme_path, "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-setup(
+_setup_kwargs = dict(
     name=os.environ.get("FLAGTREE_WHEEL_NAME", "flagtree"),
     version=get_flagtree_version(),
     author="FlagOS",
@@ -939,3 +939,10 @@ setup(
         ],
     },
 )
+
+# Apply mthreads package overrides for non-editable installs
+if helper.flagtree_backend == "mthreads" and "editable_wheel" not in sys.argv:
+    from python.setup_tools.utils.mthreads import apply_mthreads_setup_args
+    apply_mthreads_setup_args(_setup_kwargs)
+
+setup(**_setup_kwargs)

@@ -4,6 +4,10 @@ __version__ = '3.6.0'
 # ---------------------------------------
 # Note: import order is significant here.
 
+# flagtree backend path specialization
+from .flagtree_spec import spec_path
+spec_path(__path__)
+
 # submodules
 from .runtime import (
     autotune,
@@ -19,7 +23,7 @@ from .runtime import (
 )
 from .runtime.jit import constexpr_function, jit
 from .runtime._async_compile import AsyncCompileMode, FutureKernel
-from .compiler import compile, CompilationError
+from .compiler import compile, CompilationError, max_shared_mem
 from .errors import TritonError
 from .runtime._allocation import set_allocator
 
@@ -44,6 +48,7 @@ __all__ = [
     "JITFunction",
     "KernelInterface",
     "language",
+    "max_shared_mem",
     "MockTensor",
     "must_use_result",
     "next_power_of_2",
