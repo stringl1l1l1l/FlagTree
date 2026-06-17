@@ -17,6 +17,7 @@ from triton.experimental.tle.raw.source_store import register_source
 CLANG = os.getenv("CLANG", "clang")
 CLANG_FLAGS = shlex.split(os.getenv("CLANG_FLAGS", ""))
 
+
 def _sanitize_clang_ir(ir: str) -> str:
     # Newer clang emits attributes that this Triton branch's LLVM parser does
     # not understand yet. They are not needed by TLE raw device function import.
@@ -48,9 +49,7 @@ def _get_cuda_gpu_arch() -> str:
 class CUDAJITFunction(object):
 
     def __init__(self, fn: Any, file: Path, *args, **kwargs) -> None:
-        super().__init__(*args, **{
-            k: v for k, v in kwargs.items() if k not in ("extern_func_name", "deferred")
-        })
+        super().__init__(*args, **{k: v for k, v in kwargs.items() if k not in ("extern_func_name", "deferred")})
         self.fn: Final[Any] = fn
         self.code: Final[str] = file.read_text()
         self.region_dialect: Final[str] = "cuda"
