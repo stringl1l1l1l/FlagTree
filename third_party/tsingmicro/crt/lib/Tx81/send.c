@@ -9,44 +9,24 @@
 
 // #include "instr_adapter_plat.h"
 #include "direct_dte_and_fsm.h"
-#include "tx81.h"
-#include "tx81_spm.h"
+#include "rcs1_spm.h"
+#include "tx81_run.h"
 #include <stdint.h>
 #include <stdio.h>
 #include <unistd.h>
 
-#define MAX_TILE_NUM 16
-
-const uint32_t tile_physical_relation[MAX_TILE_NUM] = {
-    0, 1, 2, 3, 7, 11, 15, 14, 13, 12, 8, 9, 10, 6, 5, 4};
-
-// 获取物理连接最近的下一个tile id
-int32_t getNextNearestTileId(uint32_t tileId) {
-  for (int i = 0; i < MAX_TILE_NUM; i++) {
-    if (tile_physical_relation[i] == tileId) {
-      if (i != (MAX_TILE_NUM - 1)) {
-        return tile_physical_relation[++i];
-      } else {
-        return tile_physical_relation[0];
-      }
+// Find the tile that precedes `tileId` in the given physical_ids ring.
+static int32_t getPrevInTopology(uint32_t tileId, const uint32_t *physical_ids,
+                                 uint32_t mesh_size) {
+  if (mesh_size == 0 || !physical_ids)
+    return -1;
+  for (uint32_t i = 0; i < mesh_size; i++) {
+    if (physical_ids[i] == tileId) {
+      if (i == 0)
+        return physical_ids[mesh_size - 1];
+      return physical_ids[i - 1];
     }
   }
-
-  return -1;
-}
-
-// 获取物理连接最近的上一个tile id
-int32_t getPrevNearestTileId(uint32_t tileId) {
-  for (int i = 0; i < MAX_TILE_NUM; i++) {
-    if (tile_physical_relation[i] == tileId) {
-      if (i != 0) {
-        return tile_physical_relation[--i];
-      } else {
-        return tile_physical_relation[MAX_TILE_NUM - 1];
-      }
-    }
-  }
-
   return -1;
 }
 
@@ -104,22 +84,20 @@ int initTileId(uint32_t tileId, uint32_t rowLength) {
 }
 
 // Asynchronously send data to a destination tile.
-// The operation reads from the given source buffer and sends it to the remote
-// tile. The operation is non-blocking and returns immediately.
+// physical_ids and mesh_size carry the ring topology so that recv-source
+// lookup works per-call without hardcoded globals.
 void __Send(int64_t chipX, int64_t chipY, int64_t dieId, int64_t tileId,
             void *restrict dst, void *restrict src, uint32_t elem_bytes,
-            uint64_t data_size) {
-  uint32_t coreIndex = __get_pid(0); // 全局tile id
+            uint64_t data_size, const uint32_t *physical_ids,
+            uint32_t mesh_size) {
+  uint32_t coreIndex = __get_pid(0);
   initTileId(coreIndex, 4);
-  // __EP_LOG__(0, "+++++++++ Send444 dst:%lx, src: %lx, cur_tileId:%d,
-  // nextTileId: %d, data_size: %d\n", dst, src, coreIndex, tileId, data_size);
   (void)chipX;
   (void)chipY;
   (void)dieId;
-  int64_t nextTileId = getNextNearestTileId(coreIndex);
-  int64_t preTileId = getPrevNearestTileId(coreIndex);
-  // tile_sync_by_spm_single_direction(coreIndex, preTileId, 4, 4, 0, 0);
-  const TsmOperatorPointer *intrinsic = g_intrinsic();
+  int64_t nextTileId = tileId;
+  int64_t preTileId = getPrevInTopology(coreIndex, physical_ids, mesh_size);
+  const RcsOperatorPointer *intrinsic = g_intrinsic();
 
   int fringFsmId = DIRECT_DTE_FSM_ID_0;
   int remottFringFsmId = DIRECT_DTE_FSM_ID_0;
@@ -127,40 +105,28 @@ void __Send(int64_t chipX, int64_t chipY, int64_t dieId, int64_t tileId,
   void *fdteNode = direct_dte_attach(0);
   void *fringFsmHd = direct_fsm_monitor_init(fringFsmId, 0, data_size, 1);
 
-  TsmStream *stream = (TsmStream *)(intrinsic->stream_pointer);
+  RcsStream *stream = (RcsStream *)(intrinsic->stream_pointer);
   uint64_t nextTileBaseAddr = get_tile_spm_addr_base(nextTileId, 4, 4);
 
   stream->wait_finish();
 
-  // __EP_LOG__(0, "fdte info base: %ld, dst: %ld, src: %ld, remote_fsm_id: %d,
-  // data_size: %d, dst_tileId: %d, this_tileId: %d\n",
-  //     nextTileBaseAddr, nextTileBaseAddr + (uint64_t)dst, (uint64_t)src,
-  //     remottFringFsmId, data_size, tileId, coreIndex);
   DirectDTESendInfo fdteInfo = {.src_addr = (uint64_t)src,
                                 .dst_addr = nextTileBaseAddr + (uint64_t)dst,
                                 .length = data_size,
                                 .remote_fsm_id = remottFringFsmId,
-                                .mode = 0, // unicast
+                                .mode = 0,
                                 .dst_tile = nextTileId,
                                 .tile_this = coreIndex,
                                 .dte_node = fdteNode};
   set_direct_fsm_monitor_dst_addr(fringFsmId, nextTileBaseAddr + (uint64_t)dst);
   tile_sync_by_spm_single_direction(coreIndex, preTileId, 4, 4, 0, 0);
-  direct_dte_send_async(&fdteInfo); // 把当前数据异步发送给下一个tile
-  // __EP_LOG__(KCORE_LOG_DEBUG, "send data to next tile: %u, current
-  // tile:%u.\n",
-  //             getNextNearestTileId(coreIndex), coreIndex);
+  direct_dte_send_async(&fdteInfo);
 
-  direct_fsm_monitor_receive(coreIndex, preTileId,
-                             fringFsmHd); // 阻塞接收前一个tile发送的数据
-  // __EP_LOG__(KCORE_LOG_DEBUG,
-  //             "receive data from coreIndex: %u, current tile:%u.\n",
-  //             getPrevNearestTileId(coreIndex), coreIndex);
-  direct_dte_wait_done(&fdteInfo); // 等待异步发送完成
-  TsmWaitfinish();
+  direct_fsm_monitor_receive(coreIndex, preTileId, fringFsmHd);
+  direct_dte_wait_done(&fdteInfo);
+  RcsWaitfinish();
 
   tile_sync_by_spm_single_direction(coreIndex, preTileId, 4, 4, 0, 0);
   direct_dte_release(fdteNode);
   direct_fsm_monitor_deinit(fringFsmHd);
-  // __EP_LOG__(0, "-------- Send\n")
 }

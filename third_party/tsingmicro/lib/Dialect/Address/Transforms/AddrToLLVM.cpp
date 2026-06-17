@@ -20,6 +20,7 @@
 #include "mlir/Conversion/LLVMCommon/MemRefBuilder.h"
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/MemRef/IR/MemRef.h"
+#include "mlir/Dialect/SCF/Transforms/Patterns.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/Interfaces/CallInterfaces.h"
@@ -40,7 +41,7 @@ namespace {
 struct AddrToLLVM : public ::mlir::addr::impl::AddrToLLVMBase<AddrToLLVM> {
   using Base::Base;
   void getDependentDialects(DialectRegistry &registry) const override {
-    registry.insert<addr::AddressDialect, LLVM::LLVMDialect>();
+    registry.insert<addr::AddressDialect, LLVM::LLVMDialect, scf::SCFDialect>();
   }
 
   void runOnOperation() override;
@@ -344,6 +345,8 @@ void AddrToLLVM::runOnOperation() {
       typeConverter);
   // WORKAROUND: Bufferize not support addr dialect, so convert mk::bitcast here
   patterns.add<MKBitCastConversionPattern>(patterns.getContext());
+  mlir::scf::populateSCFStructuralTypeConversionsAndLegality(typeConverter,
+                                                             patterns, target);
 
   // populateFuncToLLVMConversionPatterns(typeConverter, patterns, symbolTable);
   if (failed(applyPartialConversion(module, target, std::move(patterns))))

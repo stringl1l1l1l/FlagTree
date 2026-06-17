@@ -5,13 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Runtime API of MLIR operation tx::TsmConv, see Tx81Ops.td for detail.
+// Runtime API of MLIR operation tx::RcsConv, see Tx81Ops.td for detail.
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
-// The arguments list is aligned with TsmConv in Tx81Ops.td
+// The arguments list is aligned with RcsConv in Tx81Ops.td
 void __Conv(int64_t opType, int64_t *srcAct, int64_t *srcActDims,
             int64_t *weight, int64_t *weightDims, bool enBias, int64_t *bias,
             bool enNegScale, int64_t *negScale, bool enPosScale,
@@ -21,8 +21,8 @@ void __Conv(int64_t opType, int64_t *srcAct, int64_t *srcActDims,
             int64_t weightFmt, int64_t dstFmt, int64_t *dst, int64_t *dstDims) {
   INTRNISIC_RUN_SWITCH;
   // Create convolution command buffer.
-  TsmConv *conv = g_intrinsic()->conv_pointer;
-  TsmNeInstr inst = {I_NEUR,
+  RcsConv *conv = g_intrinsic()->conv_pointer;
+  RcsNeInstr inst = {I_NEUR,
                      {
                          0,
                      },
@@ -60,7 +60,7 @@ void __Conv(int64_t opType, int64_t *srcAct, int64_t *srcActDims,
     conv->EnableRelu(&inst);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

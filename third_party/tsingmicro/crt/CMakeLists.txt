@@ -10,19 +10,11 @@ if(NOT DEFINED TARGET)
   endif()
 endif()
 
-if(NOT DEFINED TX8_YOC_RT_THREAD_SMP)
-  if(DEFINED ENV{TX8_YOC_RT_THREAD_SMP})
-    set(TX8_YOC_RT_THREAD_SMP $ENV{TX8_YOC_RT_THREAD_SMP})
+if(NOT DEFINED XUANTIE_DIR)
+  if(DEFINED ENV{XUANTIE_DIR})
+    set(XUANTIE_DIR $ENV{XUANTIE_DIR})
   else()
-    message(FATAL_ERROR "TX8_YOC_RT_THREAD_SMP environment variable is not defined")
-  endif()
-endif()
-
-if(NOT DEFINED XUANTIE_NAME)
-  if(DEFINED ENV{XUANTIE_NAME})
-    set(XUANTIE_NAME $ENV{XUANTIE_NAME})
-  else()
-    message(FATAL_ERROR "XUANTIE_NAME environment variable is not defined")
+    message(FATAL_ERROR "XUANTIE_DIR environment variable is not defined")
   endif()
 endif()
 
@@ -57,11 +49,10 @@ endif()
 project(VendorRuntime LANGUAGES CXX C)
 
 # Define standard include directories
-include_directories(${TX8_DEPS_ROOT}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR})
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include/${TARGET})
 include_directories(${CMAKE_CURRENT_BINARY_DIR})
-include_directories(${TX8_YOC_RT_THREAD_SMP}/interface/op_fw_sim_if/peripheral/include/)
+include_directories(${TX8_DEPS_ROOT}/tx8-yoc-rt-thread-smp/interface/op_fw_sim_if/peripheral/include/)
 
 # Set build type default
 if(NOT CMAKE_BUILD_TYPE)
@@ -75,10 +66,10 @@ set(VENDOR_RUNTIME_LIB vr)
 file(GLOB_RECURSE VENDOR_SOURCES lib/${TARGET}/*.c)
 
 set(CMAKE_SYSTEM_NAME Generic)
-set(CMAKE_C_COMPILER ${LLVM_SYSPATH}/bin/clang)
-set(CMAKE_CXX_COMPILER ${LLVM_SYSPATH}/bin/clang++)
 
 if (USE_SIM_MODE)
+  set(CMAKE_C_COMPILER ${LLVM_SYSPATH}/bin/clang)
+  set(CMAKE_CXX_COMPILER ${LLVM_SYSPATH}/bin/clang++)
   # Define simulator specific compile options
   set(SIMULATOR_COMPILE_OPTIONS
     -fPIC
@@ -97,20 +88,28 @@ if (USE_SIM_MODE)
     SUFFIX ".so"
   )
 else()
+  set(CMAKE_C_COMPILER ${XUANTIE_DIR}/bin/riscv64-unknown-elf-gcc)
+  set(CMAKE_CXX_COMPILER ${XUANTIE_DIR}/bin/riscv64-unknown-elf-g++)
+  # set(CMAKE_C_COMPILER ${LLVM_SYSPATH}/bin/clang)
+  # set(CMAKE_CXX_COMPILER ${LLVM_SYSPATH}/bin/clang++)
   # Define RISC-V target triple
   set(RISCV_TRIPLE "riscv64-unknown-elf")
   set(CMAKE_SYSTEM_PROCESSOR riscv)
+  set(RISCV_STRIP ${XUANTIE_DIR}/bin/${RISCV_TRIPLE}-strip)
 
-  include_directories(${TX8_DEPS_ROOT}/include)
-  include_directories(${TX8_DEPS_ROOT}/${XUANTIE_NAME}/riscv64-unknown-elf/include)
-  include_directories(${TX8_DEPS_ROOT}/include/bsp/xuantie_riscv_tx81/board_riscv_tx81/include)
-  include_directories(${TX8_DEPS_ROOT}/include/rtthread/include)
+  include_directories(${XUANTIE_DIR}/riscv64-unknown-elf/include)
+  # include_directories(${TX8_DEPS_ROOT}/include)
+  # include_directories(${TX8_DEPS_ROOT}/include/bsp/xuantie_riscv_tx81/board_riscv_tx81/include)
+  # include_directories(${TX8_DEPS_ROOT}/include/rtthread/include)
 
   # Define RISC-V specific compile options
   set(RISCV_COMPILE_OPTIONS
-    --target=${RISCV_TRIPLE}
-    -march=rv64imfdc
-    -mabi=lp64d
+    -mcpu=c908
+    # clang config
+    # --target=${RISCV_TRIPLE}
+    # -march=rv64imfdc
+    # -march=rv64imafdc_xtheadcmo_xtheadsync
+    # -mabi=lp64d
     -mcmodel=medany
     -DCONFIG_TX8_KERNEL_PRINTF_SUPPORT=1
   )
@@ -143,6 +142,8 @@ else()
   # Add the library target
   add_library(${VENDOR_RUNTIME_LIB} STATIC ${VENDOR_SOURCES})
 
+  target_link_libraries(${VENDOR_RUNTIME_LIB} PRIVATE rcsfw_include_interface)
+
   # Apply RISC-V specific settings to our target
   target_compile_options(${VENDOR_RUNTIME_LIB} PRIVATE ${RISCV_COMPILE_OPTIONS})
   target_link_options(${VENDOR_RUNTIME_LIB} PRIVATE --target=${RISCV_TRIPLE})
@@ -154,8 +155,19 @@ else()
     SUFFIX ".a"
   )
 
+  add_custom_command(TARGET ${VENDOR_RUNTIME_LIB} POST_BUILD
+    COMMAND ${RISCV_STRIP} --strip-debug $<TARGET_FILE:${VENDOR_RUNTIME_LIB}>
+    VERBATIM
+  )
+
 endif()
 
 install(TARGETS ${VENDOR_RUNTIME_LIB}
   ARCHIVE DESTINATION ${INSTALL_TSINGMICRO_DIR}/lib
 )
+
+option(BUILD_TX81_HOST_TESTS "Build Tx81 host unit tests" OFF)
+if(BUILD_TX81_HOST_TESTS)
+  enable_testing()
+  add_subdirectory(test)
+endif()

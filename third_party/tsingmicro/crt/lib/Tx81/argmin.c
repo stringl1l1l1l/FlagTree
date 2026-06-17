@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __ArgMin(uint64_t *src, uint64_t *dst0, uint64_t *dst1,
               uint32_t elem_count, uint16_t fmt) {
@@ -37,8 +37,8 @@ void __ArgMin(uint64_t *src, uint64_t *dst0, uint64_t *dst1,
     }
     return;
   }
-  TsmPeripheral *cmd = g_intrinsic()->peripheral_pointer;
-  TsmPeripheralInstr inst = {I_CGRA,
+  RcsPeripheral *cmd = g_intrinsic()->peripheral_pointer;
+  RcsPeripheralInstr inst = {I_CGRA,
                              {
                                  0,
                              },
@@ -50,9 +50,9 @@ void __ArgMin(uint64_t *src, uint64_t *dst0, uint64_t *dst1,
   cmd->ArgMin(&inst, (uint64_t)src, elem_count, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
 
-  TsmWaitfinish();
+  RcsWaitfinish();
 
   switch (fmt) {
   case Fmt_FP16:

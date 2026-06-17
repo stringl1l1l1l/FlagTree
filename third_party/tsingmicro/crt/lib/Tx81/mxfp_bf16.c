@@ -8,7 +8,7 @@
 // tx::FP8E5M2ToBF16Op/tx::FP8E4M3ToBF16Op/tx::FP4E2M1ToBF16Op
 //
 //===----------------------------------------------------------------------===//
-#include "tx81.h"
+#include "tx81_run.h"
 #include <stdio.h>
 
 /**

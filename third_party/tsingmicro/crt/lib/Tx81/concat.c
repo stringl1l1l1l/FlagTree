@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __Concat(uint64_t *src1, uint16_t src1_n, uint16_t src1_h, uint16_t src1_w,
               uint16_t src1_c, uint64_t *src2, uint16_t src2_n, uint16_t src2_h,
@@ -18,8 +18,8 @@ void __Concat(uint64_t *src1, uint16_t src1_n, uint16_t src1_h, uint16_t src1_w,
               uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmDataMove *cmd = g_intrinsic()->datamove_pointer;
-  TsmMoveInstr inst = {I_CGRA,
+  RcsDataMove *cmd = g_intrinsic()->datamove_pointer;
+  RcsMoveInstr inst = {I_CGRA,
                        {
                            0,
                        },
@@ -34,7 +34,7 @@ void __Concat(uint64_t *src1, uint16_t src1_n, uint16_t src1_h, uint16_t src1_w,
               (uint64_t)dst, shape3, dim, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

@@ -3,7 +3,7 @@ add_triton_library(TritonArithToLinalg
   TritonArithToLinalgPass.cpp
 
   DEPENDS
-  TritonArithToLinalgConversionPassIncGen
+  TsmcTritonArithToLinalgConversionPassIncGen
 
   LINK_LIBS PUBLIC
   MLIRLinalgTransforms

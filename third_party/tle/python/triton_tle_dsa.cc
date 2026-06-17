@@ -67,12 +67,26 @@ static void init_triton_tle_ir(py::module m) {
                indices.push_back(py::cast<Value>(arg));
              return self.create<dsa::LocalPointersOp>(resultTy, src, indices);
            })
-      .def("create_dsa_remote_pointers",
-           [](TritonOpBuilder &self, Type resultTy, Value src,
-              Value shardId) -> OpState {
-             self.getContext()->getOrLoadDialect<dsa::DsaDialect>();
-             return self.create<dsa::RemotePointersOp>(resultTy, src, shardId);
-           })
+      .def(
+          "create_dsa_remote_pointers",
+          [](TritonOpBuilder &self, Type resultTy, Value src, Value shardId,
+             py::object scope) -> OpState {
+            self.getContext()->getOrLoadDialect<dsa::DsaDialect>();
+            DenseI32ArrayAttr meshPhysicalIdsAttr;
+            if (!scope.is_none() && py::hasattr(scope, "physical_ids")) {
+              py::object physicalIds = scope.attr("physical_ids");
+              std::vector<int32_t> ids;
+              for (auto id : py::reinterpret_borrow<py::iterable>(physicalIds))
+                ids.push_back(py::cast<int32_t>(id));
+              if (!ids.empty())
+                meshPhysicalIdsAttr =
+                    DenseI32ArrayAttr::get(self.getBuilder().getContext(), ids);
+            }
+            return self.create<dsa::RemotePointersOp>(resultTy, src, shardId,
+                                                      meshPhysicalIdsAttr);
+          },
+          py::arg("resultTy"), py::arg("src"), py::arg("shardId"),
+          py::arg("scope") = py::none())
       .def("create_dsa_distributed_barrier",
            [](TritonOpBuilder &self, const std::string &groupKind,
               const std::vector<int32_t> &groupShape,

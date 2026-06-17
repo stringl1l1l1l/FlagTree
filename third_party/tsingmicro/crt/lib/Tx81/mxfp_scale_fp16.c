@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 #include <stdio.h>
 
 /**
@@ -32,8 +32,8 @@ void __mxfpScaleFP16(uint16_t *value, uint8_t *scale, uint16_t *dst,
   scale = (uint8_t *)get_spm_memory_mapping_wrapper((uint64_t)scale);
 
   // Create command buffer.
-  TsmArith *cmd = g_intrinsic()->arith_pointer;
-  TsmArithInstr inst = {I_CGRA,
+  RcsArith *cmd = g_intrinsic()->arith_pointer;
+  RcsArithInstr inst = {I_CGRA,
                         {
                             0,
                         },
@@ -85,7 +85,7 @@ void __mxfpScaleFP16(uint16_t *value, uint8_t *scale, uint16_t *dst,
     cmd->MulVS(&inst, (uint64_t)block_src, (uint32_t)scale_fp16,
                (uint64_t)block_dst, scaling_block_size, RND_NEAREST_EVEN,
                Fmt_FP16);
-    TsmExecute(&inst);
+    RcsExecute(&inst);
     SYNCHRONOUS_INTRINSIC_SWITCH;
   }
 }

@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __Img2col(uint64_t *src, uint16_t src_n, uint16_t src_h, uint16_t src_w,
                uint16_t src_c, uint64_t *dst, uint16_t dst_n, uint16_t dst_h,
@@ -19,8 +19,8 @@ void __Img2col(uint64_t *src, uint16_t src_n, uint16_t src_h, uint16_t src_w,
                uint16_t pdr_w, uint16_t pdr_c, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmDataMove *cmd = g_intrinsic()->datamove_pointer;
-  TsmDataMoveInstr inst = {I_CGRA,
+  RcsDataMove *cmd = g_intrinsic()->datamove_pointer;
+  RcsDataMoveInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -36,7 +36,7 @@ void __Img2col(uint64_t *src, uint16_t src_n, uint16_t src_h, uint16_t src_w,
                src_elem_num, dst_elem_num, shape3, shape4, (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

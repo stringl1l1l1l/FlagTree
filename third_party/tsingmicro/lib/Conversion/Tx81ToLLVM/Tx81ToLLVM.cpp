@@ -42,6 +42,7 @@
 #include "triton/Dialect/Triton/IR/Dialect.h"
 #include "tsingmicro-tx81/Dialect/IR/Tx81Dialect.h"
 #include "llvm/ADT/TypeSwitch.h"
+#include <cstdlib>
 
 #ifdef DEBUG_TYPE
 #undef DEBUG_TYPE
@@ -187,6 +188,12 @@ const char atomicBarrierOutFuncName[] = "__AtomicBarrierOut";
 const char MXFPScaleBF16FuncName[] = "__mxfpScaleBF16";
 const char MXFPScaleFP16FuncName[] = "__mxfpScaleFP16";
 
+typedef enum {
+  DMA_ACT_LOG = 0x1,
+  DMA_ACT_CHK = 0x2,
+  DMA_ACT_END = 0x4
+} DMAAction;
+
 static Value adjustElemCountType(ConversionPatternRewriter &rewriter,
                                  Location loc, Value elemCount) {
   Value newElemCount = elemCount;
@@ -325,6 +332,25 @@ static Value int32ArrayToInt32ValueArray(ConversionPatternRewriter &rewriter,
   return createInt32ValueArray(rewriter, loc, arrayValues, currentOp);
 }
 
+static uint32_t getDmaActionFromEnv() {
+  uint32_t action = 0;
+  const char *val = 0;
+
+  val = std::getenv("TRITON_DMA_LOGGING");
+  if (val) {
+    if (std::atoi(val) == 1)
+      action |= DMA_ACT_LOG;
+  }
+
+  val = std::getenv("TRITON_DMA_CHECKING");
+  if (val) {
+    if (std::atoi(val) == 1)
+      action |= DMA_ACT_CHK;
+  }
+
+  return action;
+}
+
 //===----------------------------------------------------------------------===//
 // Arith Operation Conversion Patterns
 //===----------------------------------------------------------------------===//
@@ -447,28 +473,52 @@ struct BarrierConversion : public OpConversionPattern<tx::BarrierOp> {
   LogicalResult
   matchAndRewrite(tx::BarrierOp op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
-    // Get the module for function declarations
     auto module = op->getParentOfType<ModuleOp>();
-
-    // Declare the __Barrier runtime function if not already declared
-    /*
-    void __Barrier()
-    */
-
     auto i8PtrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
 
-    // Declare the function
     Value funcPtr = triton::declareTx81Function(module, rewriter, op.getLoc(),
                                                 "__Barrier", i8PtrTy, {});
 
-    // Create the call to __Barrier
     auto call = rewriter.create<LLVM::CallOp>(op.getLoc(), TypeRange{i8PtrTy},
-                                              "__Barrier", // funcPtr,
-                                              ValueRange{});
+                                              "__Barrier", ValueRange{});
 
-    // Replace the op with the call
     rewriter.eraseOp(op);
+    return success();
+  }
+};
 
+struct DistributeBarrierOpConversion
+    : public OpConversionPattern<tx::DistributeBarrierOp> {
+  using OpConversionPattern<tx::DistributeBarrierOp>::OpConversionPattern;
+
+  LogicalResult
+  matchAndRewrite(tx::DistributeBarrierOp op, OpAdaptor adaptor,
+                  ConversionPatternRewriter &rewriter) const override {
+    auto module = op->getParentOfType<ModuleOp>();
+    auto loc = op.getLoc();
+    auto ctx = rewriter.getContext();
+
+    auto i32Ty = rewriter.getI32Type();
+    auto ptrTy = LLVM::LLVMPointerType::get(ctx);
+    auto voidTy = LLVM::LLVMVoidType::get(ctx);
+
+    auto meshPhysicalIds = op.getMeshPhysicalIdsAttr();
+    auto idsRef = meshPhysicalIds.asArrayRef();
+    SmallVector<int32_t> ids(idsRef.begin(), idsRef.end());
+
+    Value physicalIdsPtr = int32ArrayToInt32ValueArray(rewriter, loc, ids, op);
+
+    Value count = rewriter.create<LLVM::ConstantOp>(
+        loc, i32Ty, rewriter.getI32IntegerAttr(ids.size()));
+
+    SmallVector<Type, 2> argTypes = {ptrTy, i32Ty};
+    triton::declareTx81Function(module, rewriter, loc, "__BarrierSubgroup",
+                                voidTy, argTypes);
+
+    rewriter.create<LLVM::CallOp>(loc, TypeRange{}, "__BarrierSubgroup",
+                                  ValueRange{physicalIdsPtr, count});
+
+    rewriter.eraseOp(op);
     return success();
   }
 };
@@ -562,6 +612,7 @@ struct Rdma1dOpConversion : public OpConversionPattern<Tx81Op> {
   matchAndRewrite(Tx81Op op, OpAdaptor adaptor,
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
+    auto ctx = rewriter.getContext();
 
     // Get the module for function declarations
     auto module = op->template getParentOfType<ModuleOp>();
@@ -569,13 +620,38 @@ struct Rdma1dOpConversion : public OpConversionPattern<Tx81Op> {
     auto LLVMPtrType = rewriter.getType<LLVM::LLVMPointerType>();
     auto i32Type = rewriter.getI32Type();
 
+    // Get kernel name from parent function
+    std::string kernelName;
+    if (auto funcOp = op->template getParentOfType<func::FuncOp>())
+      kernelName = funcOp.getName().str();
+    else if (auto llvmFunc = op->template getParentOfType<LLVM::LLVMFuncOp>())
+      kernelName = llvmFunc.getName().str();
+
     // Types for function declaration
     SmallVector<Type> argTypes = {
         LLVMPtrType, // dest
         LLVMPtrType, // src
         i32Type,     // elem_count
-        i32Type      // fmt
+        i32Type,     // fmt
+        i32Type,     // action
+        LLVMPtrType, // base_ddr_addr
+        LLVMPtrType  // kernel_name
     };
+
+    // Create or find global kernel name string constant
+    std::string globalName = "__dma_kernel_name";
+    auto savedIP = rewriter.saveInsertionPoint();
+    rewriter.setInsertionPointToStart(module.getBody());
+    if (!module.template lookupSymbol<LLVM::GlobalOp>(globalName)) {
+      auto charType = IntegerType::get(ctx, 8);
+      auto strType = LLVM::LLVMArrayType::get(charType, kernelName.size() + 1);
+      rewriter.create<LLVM::GlobalOp>(
+          loc, strType, /*isConstant=*/true, LLVM::Linkage::Internal,
+          globalName, rewriter.getStringAttr(kernelName + '\0'));
+    }
+    rewriter.restoreInsertionPoint(savedIP);
+    auto kernelNamePtr = rewriter.create<LLVM::AddressOfOp>(
+        loc, LLVM::LLVMPointerType::get(ctx), globalName);
 
     // Declare the function
     Value funcPtr = triton::declareTx81Function(module, rewriter, loc,
@@ -589,10 +665,18 @@ struct Rdma1dOpConversion : public OpConversionPattern<Tx81Op> {
     Value fmt =
         rewriter.create<LLVM::ConstantOp>(loc, i32Type, op.getFmtAttr());
 
+    Value baseDdrAddr = adaptor.getBaseDdrAddr();
+    baseDdrAddr =
+        rewriter.create<LLVM::IntToPtrOp>(loc, LLVMPtrType, baseDdrAddr);
+
+    Value action = rewriter.create<LLVM::ConstantOp>(
+        loc, i32Type, rewriter.getI32IntegerAttr(getDmaActionFromEnv()));
+
     // Create the call to __Rdma1d/__Wdma1d
     auto call = rewriter.replaceOpWithNewOp<LLVM::CallOp>(
         op, TypeRange{}, funcPrefix,
-        ValueRange{dstPtr, srcPtr, elemCount, fmt});
+        ValueRange{dstPtr, srcPtr, elemCount, fmt, action, baseDdrAddr,
+                   kernelNamePtr});
 
     return success();
   }
@@ -672,6 +756,52 @@ struct RemoteLoadOpConversion : public OpConversionPattern<tx::RemoteLoadOp> {
   }
 };
 
+// Emit a LLVM global array constant for the given physical_ids and return
+// (pointer-to-array, mesh_size).  Each unique mesh gets its own global so
+// multiple __Send calls with different topologies coexist correctly.
+static std::pair<Value, Value>
+emitMeshTopologyForCall(ModuleOp module, OpBuilder &builder, Location loc,
+                        DenseI32ArrayAttr physicalIdsAttr) {
+  auto ctx = builder.getContext();
+  auto i32Ty = IntegerType::get(ctx, 32);
+  auto ptrTy = LLVM::LLVMPointerType::get(ctx);
+  Value nullPtr = builder.create<LLVM::ZeroOp>(loc, ptrTy);
+  Value zeroSize = builder.create<LLVM::ConstantOp>(
+      loc, i32Ty, builder.getI32IntegerAttr(0));
+
+  if (!physicalIdsAttr || physicalIdsAttr.asArrayRef().empty())
+    return {nullPtr, zeroSize};
+
+  auto ids = physicalIdsAttr.asArrayRef();
+  SmallVector<int32_t> values(ids.begin(), ids.end());
+
+  // Build a deterministic unique name from the id list.
+  std::string name;
+  llvm::raw_string_ostream os(name);
+  os << "__tle_phys";
+  for (auto id : ids)
+    os << "_" << id;
+
+  // Only create the global once; same-physical_ids calls will reuse it.
+  if (!module.lookupSymbol(name)) {
+    auto arrayType = LLVM::LLVMArrayType::get(i32Ty, ids.size());
+    auto arrayAttr = DenseIntElementsAttr::get(
+        RankedTensorType::get({static_cast<int64_t>(ids.size())}, i32Ty),
+        values);
+    auto ip = builder.saveInsertionPoint();
+    builder.setInsertionPointToStart(module.getBody());
+    builder.create<LLVM::GlobalOp>(loc, arrayType, /*isConstant=*/true,
+                                   LLVM::Linkage::Internal, name, arrayAttr);
+    builder.restoreInsertionPoint(ip);
+  }
+
+  auto global = module.lookupSymbol<LLVM::GlobalOp>(name);
+  Value ptr = builder.create<LLVM::AddressOfOp>(loc, global);
+  Value size = builder.create<LLVM::ConstantOp>(
+      loc, i32Ty, builder.getI32IntegerAttr(ids.size()));
+  return {ptr, size};
+}
+
 // Convert tx.remote_store to LLVM call to __Send function
 struct RemoteStoreOpConversion : public OpConversionPattern<tx::RemoteStoreOp> {
   using OpConversionPattern<tx::RemoteStoreOp>::OpConversionPattern;
@@ -681,21 +811,24 @@ struct RemoteStoreOpConversion : public OpConversionPattern<tx::RemoteStoreOp> {
                   ConversionPatternRewriter &rewriter) const override {
     auto loc = op.getLoc();
     auto ctx = rewriter.getContext();
-    // Get the module for function declarations
     auto module = op->getParentOfType<ModuleOp>();
 
-    // Declare the __Send runtime function if not already declared
+    // Emit per-call mesh topology so __Send can find its recv source.
+    auto [physicalIdsPtr, meshSize] = emitMeshTopologyForCall(
+        module, rewriter, loc, op.getMeshPhysicalIdsAttr());
+
+    // Declare the __Send runtime function if not already declared.
     // Signature:
     //   void __Send(int64_t chip_x, int64_t chip_y, int64_t die_id,
     //              int64_t tile_id, void* dst, void* src,
-    //              uint32_t elem_bytes, uint64_t data_size)
+    //              uint32_t elem_bytes, uint64_t data_size,
+    //              const uint32_t *physical_ids, uint32_t mesh_size)
     auto i8PtrTy = LLVM::LLVMPointerType::get(ctx);
     auto i64Ty = rewriter.getI64Type();
     auto i32Ty = rewriter.getI32Type();
     auto voidTy = LLVM::LLVMVoidType::get(ctx);
 
-    // Types for function declaration
-    SmallVector<Type, 8> argTypes = {
+    SmallVector<Type, 10> argTypes = {
         i64Ty,   // remote_chip_id_x
         i64Ty,   // remote_chip_id_y
         i64Ty,   // remote_die_id
@@ -703,14 +836,14 @@ struct RemoteStoreOpConversion : public OpConversionPattern<tx::RemoteStoreOp> {
         i8PtrTy, // dst
         i8PtrTy, // src
         i32Ty,   // elem_bytes
-        i64Ty    // data_size
+        i64Ty,   // data_size
+        i8PtrTy, // physical_ids (opaque pointer)
+        i32Ty    // mesh_size
     };
 
-    // Declare the function with void return type
-    Value funcPtr = triton::declareTx81Function(module, rewriter, loc,
-                                                sendFuncName, voidTy, argTypes);
+    triton::declareTx81Function(module, rewriter, loc, sendFuncName, voidTy,
+                                argTypes);
 
-    // Get the operands and convert dst/src to i8*
     Value chipX = adaptor.getOperands()[0];
     Value chipY = adaptor.getOperands()[1];
     Value dieId = adaptor.getOperands()[2];
@@ -720,18 +853,15 @@ struct RemoteStoreOpConversion : public OpConversionPattern<tx::RemoteStoreOp> {
     Value elemBytes = adaptor.getOperands()[6];
     Value dataSize = adaptor.getOperands()[7];
 
-    // Convert destination and source addresses (i64) directly to pointers.
     Value dst = rewriter.create<LLVM::IntToPtrOp>(loc, i8PtrTy, dstAddr);
     src = rewriter.create<LLVM::IntToPtrOp>(loc, i8PtrTy, src);
 
-    // Create the call to __Send (void function, so empty TypeRange)
-    rewriter.create<LLVM::CallOp>(
-        loc, TypeRange{}, sendFuncName,
-        ValueRange{chipX, chipY, dieId, tileId, dst, src, elemBytes, dataSize});
+    rewriter.create<LLVM::CallOp>(loc, TypeRange{}, sendFuncName,
+                                  ValueRange{chipX, chipY, dieId, tileId, dst,
+                                             src, elemBytes, dataSize,
+                                             physicalIdsPtr, meshSize});
 
-    // tx.remote_store has no results, just erase it
     rewriter.eraseOp(op);
-
     return success();
   }
 };
@@ -749,13 +879,21 @@ struct RdmaWdmaOpConversion : public OpConversionPattern<Tx81Op> {
     // Get the module for function declarations
     auto module = op->template getParentOfType<ModuleOp>();
 
+    // Get kernel name from parent function (may be func::FuncOp or
+    // LLVM::LLVMFuncOp)
+    std::string kernelName;
+    if (auto funcOp = op->template getParentOfType<func::FuncOp>())
+      kernelName = funcOp.getName().str();
+    else if (auto llvmFunc = op->template getParentOfType<LLVM::LLVMFuncOp>())
+      kernelName = llvmFunc.getName().str();
+
     // Declare the __Rdma runtime function if not already declared
     auto i8PtrTy = LLVM::LLVMPointerType::get(ctx);
     auto i32Ty = rewriter.getI32Type();
     auto i32PtrTy = LLVM::LLVMPointerType::get(ctx);
 
     // Types for function declaration
-    SmallVector<Type, 5> argTypes = {
+    SmallVector<Type, 7> argTypes = {
         i8PtrTy,  // src
         i8PtrTy,  // target
         i32PtrTy, // src_shape array
@@ -764,8 +902,27 @@ struct RdmaWdmaOpConversion : public OpConversionPattern<Tx81Op> {
         i32PtrTy, // dst_strides array
         i32Ty,    // rank
         i32Ty,    // elemBytes
-        i32Ty     // fmt
+        i32Ty,    // fmt
+        i32Ty,    // action
+        i8PtrTy,  // base_ddr_addr
+        i8PtrTy   // kernel_name
     };
+
+    // Create or find global kernel name string constant (must be in module
+    // scope)
+    std::string globalName = "__dma_kernel_name";
+    auto savedIP = rewriter.saveInsertionPoint();
+    rewriter.setInsertionPointToStart(module.getBody());
+    if (!module.template lookupSymbol<LLVM::GlobalOp>(globalName)) {
+      auto charType = IntegerType::get(ctx, 8);
+      auto strType = LLVM::LLVMArrayType::get(charType, kernelName.size() + 1);
+      rewriter.create<LLVM::GlobalOp>(
+          loc, strType, /*isConstant=*/true, LLVM::Linkage::Internal,
+          globalName, rewriter.getStringAttr(kernelName + '\0'));
+    }
+    rewriter.restoreInsertionPoint(savedIP);
+    auto kernelNamePtr = rewriter.create<LLVM::AddressOfOp>(
+        loc, LLVM::LLVMPointerType::get(ctx), globalName);
 
     // Declare the function
     Value funcPtr = triton::declareTx81Function(module, rewriter, loc,
@@ -802,11 +959,18 @@ struct RdmaWdmaOpConversion : public OpConversionPattern<Tx81Op> {
     Value fmt = rewriter.create<LLVM::ConstantOp>(
         loc, i32Ty, rewriter.getI32IntegerAttr(op.getFmt()));
 
+    // Get base DDR address and convert to i8 ptr
+    Value baseDdrAddr = adaptor.getBaseDdrAddr();
+    baseDdrAddr = rewriter.create<LLVM::IntToPtrOp>(loc, i8PtrTy, baseDdrAddr);
+
     // Create the call to __Rdma
+    Value action = rewriter.create<LLVM::ConstantOp>(
+        loc, i32Ty, rewriter.getI32IntegerAttr(getDmaActionFromEnv()));
     auto call = rewriter.create<LLVM::CallOp>(
         loc, TypeRange{i8PtrTy}, funcPrefix,
         ValueRange{src, target, srcShapeArray, srcStridesArray, dstShapeArray,
-                   dstStridesArray, rank, elemBytes, fmt});
+                   dstStridesArray, rank, elemBytes, fmt, action, baseDdrAddr,
+                   kernelNamePtr});
 
     // Replace the op with the result of the call
     rewriter.replaceOp(op, call.getResult());
@@ -944,7 +1108,11 @@ struct TransformOpConversion : public OpConversionPattern<Tx81Op> {
 
 struct GatherScatterOpConversion
     : public OpConversionPattern<tx::GatherScatter> {
-  using OpConversionPattern<tx::GatherScatter>::OpConversionPattern;
+  GatherScatterOpConversion(MLIRContext *context, bool gatherScatterAsync)
+      : OpConversionPattern<tx::GatherScatter>(context),
+        gatherScatterAsync(gatherScatterAsync) {}
+
+  bool gatherScatterAsync = false;
 
   LogicalResult
   matchAndRewrite(tx::GatherScatter op, OpAdaptor adaptor,
@@ -961,7 +1129,7 @@ struct GatherScatterOpConversion
                      uint32_t src_iterH, uint32_t src_iterW,
                      uint32_t dst_strideN, uint32_t dst_strideH,
                      uint32_t dst_strideW, uint32_t dst_iterN,
-                     uint32_t dst_iterH, uint32_t dst_ite_W)
+                     uint32_t dst_iterH, uint32_t dst_ite_W, uint32_t action)
     */
     auto i8PtrTy = LLVM::LLVMPointerType::get(rewriter.getContext());
     auto i32Ty = rewriter.getI32Type();
@@ -983,12 +1151,15 @@ struct GatherScatterOpConversion
         i32Ty,   // src_IterW
         i32Ty,   // dst_IterN
         i32Ty,   // dst_IterH
-        i32Ty    // dst_IterW
+        i32Ty,   // dst_IterW
+        i32Ty    // action
     };
 
+    StringRef funcName =
+        gatherScatterAsync ? "__GatherScatterAsync" : "__GatherScatter";
     // Declare the function
-    Value funcPtr = triton::declareTx81Function(
-        module, rewriter, loc, "__GatherScatter", i8PtrTy, argTypes);
+    Value funcPtr = triton::declareTx81Function(module, rewriter, loc, funcName,
+                                                i8PtrTy, argTypes);
 
     // Get the operands
     Value src = adaptor.getSource();
@@ -1031,11 +1202,13 @@ struct GatherScatterOpConversion
         rewriter.create<LLVM::ConstantOp>(loc, i32Ty, adaptor.getDstIterW());
 
     // Create the call to __GatherScatter
+    Value action = rewriter.create<LLVM::ConstantOp>(
+        loc, i32Ty, rewriter.getI32IntegerAttr(getDmaActionFromEnv()));
     auto call = rewriter.create<LLVM::CallOp>(
-        loc, TypeRange{i8PtrTy}, "__GatherScatter", // funcPtr,
+        loc, TypeRange{i8PtrTy}, funcName, // funcPtr,
         ValueRange{src, dst, bytes, srcStrideN, srcStrideH, srcStrideW,
                    srcIterN, srcIterH, srcIterW, dstStrideN, dstStrideH,
-                   dstStrideW, dstIterN, dstIterH, dstIterW});
+                   dstStrideW, dstIterN, dstIterH, dstIterW, action});
 
     // Replace the op with the result of the call
     rewriter.replaceOp(op, call.getResult());
@@ -2633,7 +2806,6 @@ public:
                  AtomicBarrierOpConversion<tx::AtomicBarrierInOp, atomicBarrierInFuncName>,
                  AtomicBarrierOpConversion<tx::AtomicBarrierOutOp, atomicBarrierOutFuncName>,
                  MaskMoveOpConversion,
-                 GatherScatterOpConversion,
                  BitToFPOpConversion,
                  ChannelNormOpConversion,   // NOTE: No op used
                  DechannelNormOpConversion, // NOTE: No op used
@@ -2644,12 +2816,13 @@ public:
                  MemsetOpConversion,
                  GetProgramIDConversion,
                  BarrierConversion,
+                 DistributeBarrierOpConversion,
                  RemoteStoreOpConversion,
                  RemoteLoadOpConversion,
                  AssertConversion>(
         context);
     // clang-format on
-
+    patterns.add<GatherScatterOpConversion>(context, gatherScatterAsync);
     // Add call op conversion
     populateCallOpTypeConversionPattern(patterns, llvmTypeConverter);
 

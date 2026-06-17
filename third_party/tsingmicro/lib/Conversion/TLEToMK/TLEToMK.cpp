@@ -163,25 +163,27 @@ static LogicalResult getCoordsFromShardIdValue(PatternRewriter &rewriter,
   Value tileId = castIntegerLikeToI64(rewriter, loc, shardId);
   if (!tileId)
     return failure();
-  Value four =
-      rewriter.create<arith::ConstantOp>(loc, rewriter.getI64IntegerAttr(4));
+  // The shardId passed from remote(buf, target_shard_id) is already a
+  // physical tile ID (pre-computed by the user kernel from the mesh
+  // topology LUT).  Pass it through directly — no modulo/division
+  // decomposition into a fake 2D chip mesh.
   Value zero =
       rewriter.create<arith::ConstantOp>(loc, rewriter.getI64IntegerAttr(0));
-  Value chipX = rewriter.create<arith::RemUIOp>(loc, tileId, four);
-  Value chipY = rewriter.create<arith::DivUIOp>(loc, tileId, four);
-  coords = {chipX, chipY, zero, tileId};
+  coords = {zero, zero, zero, tileId};
   return success();
 }
 
-static LogicalResult extractRemoteInfoFromPtr(PatternRewriter &rewriter,
-                                              Location loc, Value ptrLike,
-                                              SmallVector<Value, 4> &coords,
-                                              Value &basePtrLike) {
+static LogicalResult
+extractRemoteInfoFromPtr(PatternRewriter &rewriter, Location loc, Value ptrLike,
+                         SmallVector<Value, 4> &coords, Value &basePtrLike,
+                         DenseI32ArrayAttr *meshPhysicalIdsOut = nullptr) {
   if (auto remotePtrOp = ptrLike.getDefiningOp<mlir::dsa::RemotePointersOp>()) {
     if (failed(getCoordsFromShardIdValue(rewriter, loc,
                                          remotePtrOp.getShardId(), coords)))
       return failure();
     basePtrLike = remotePtrOp.getSrc();
+    if (meshPhysicalIdsOut)
+      *meshPhysicalIdsOut = remotePtrOp.getMeshPhysicalIdsAttr();
     return success();
   }
   if (auto addPtr = ptrLike.getDefiningOp<triton::AddPtrOp>();
@@ -204,7 +206,21 @@ struct DsaDistributedBarrierToMkPattern
   using OpRewritePattern::OpRewritePattern;
   LogicalResult matchAndRewrite(mlir::dsa::DistributedBarrierOp op,
                                 PatternRewriter &rewriter) const override {
-    rewriter.create<mlir::mk::BarrierOp>(op.getLoc());
+    auto loc = op.getLoc();
+
+    DenseI32ArrayAttr meshPhysicalIds = op.getGroupMaskAttr();
+    DenseI32ArrayAttr meshShape = op.getGroupShapeAttr();
+
+    if (meshPhysicalIds && meshShape && !meshPhysicalIds.asArrayRef().empty()) {
+      // Subgroup barrier: carry mesh topology through the pipeline via a
+      // dedicated DistributeBarrierOp, leaving the plain BarrierOp untouched.
+      rewriter.create<mlir::mk::DistributeBarrierOp>(loc, meshPhysicalIds,
+                                                     meshShape);
+    } else {
+      // No group attributes → plain full-cluster barrier.
+      rewriter.create<mlir::mk::BarrierOp>(loc);
+    }
+
     rewriter.eraseOp(op);
     return success();
   }
@@ -256,8 +272,10 @@ struct DsaRemoteStoreToMkPattern : public OpRewritePattern<triton::StoreOp> {
     Location loc = storeOp.getLoc();
     SmallVector<Value, 4> sendCoords;
     Value basePtrLike = storeOp.getPtr();
+    DenseI32ArrayAttr meshPhysicalIds;
     if (failed(extractRemoteInfoFromPtr(rewriter, loc, storeOp.getPtr(),
-                                        sendCoords, basePtrLike)))
+                                        sendCoords, basePtrLike,
+                                        &meshPhysicalIds)))
       return failure();
 
     if (storeOp.getMask())
@@ -267,7 +285,7 @@ struct DsaRemoteStoreToMkPattern : public OpRewritePattern<triton::StoreOp> {
                                                  storeOp.getOperation());
     rewriter.create<mk::RemoteStoreOp>(loc, sendCoords[0], sendCoords[1],
                                        sendCoords[2], sendCoords[3], dstAddrI64,
-                                       storeOp.getValue());
+                                       storeOp.getValue(), meshPhysicalIds);
     rewriter.eraseOp(storeOp);
     return success();
   }

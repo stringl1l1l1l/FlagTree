@@ -32,6 +32,6 @@ add_triton_library(TritonToCoreDialects
   TritonToUnstructured
   TLEToMagicKernel
   ConvertTritonPtr
-  ReconcilePtrCasts
+  TsmcReconcilePtrCasts
   TritonPtrToMemref
 )

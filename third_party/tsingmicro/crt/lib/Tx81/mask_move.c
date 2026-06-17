@@ -9,13 +9,13 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __MaskMove(uint64_t *src, uint64_t *target, uint32_t elem_count,
                 uint64_t *mask, int32_t fmt) {
   INTRNISIC_RUN_SWITCH;
-  TsmMaskDataMove *move = g_intrinsic()->maskdatamove_pointer;
-  TsmMaskDataMoveInstr inst = {I_CGRA,
+  RcsMaskDataMove *move = g_intrinsic()->maskdatamove_pointer;
+  RcsMaskDataMoveInstr inst = {I_CGRA,
                                {
                                    0,
                                },
@@ -26,6 +26,6 @@ void __MaskMove(uint64_t *src, uint64_t *target, uint32_t elem_count,
   move->MaskMove(&inst, (uint64_t)src, (uint64_t)mask, (uint64_t)target,
                  elem_count, (Data_Format)fmt);
 
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 }

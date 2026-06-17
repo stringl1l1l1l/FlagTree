@@ -71,7 +71,8 @@ def Dsa_DistributedBarrierOp : Dsa_Op<"distributed_barrier",
 }
 
 def Dsa_RemotePointersOp : Dsa_Op<"remote_pointers", [Pure]> {
-  let arguments = (ins DsaRemotePointerType:$src, DsaRemoteShardIdType:$shard_id);
+  let arguments = (ins DsaRemotePointerType:$src, DsaRemoteShardIdType:$shard_id,
+                   OptionalAttr<DenseI32ArrayAttr>:$mesh_physical_ids);
   let results = (outs DsaRemotePointerType:$result);
 }
 

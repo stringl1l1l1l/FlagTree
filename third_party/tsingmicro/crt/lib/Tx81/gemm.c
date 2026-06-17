@@ -5,13 +5,13 @@
 //
 //===----------------------------------------------------------------------===//
 //
-// Runtime API of MLIR operation tx::TsmGemm, see Tx81Ops.td for detail.
+// Runtime API of MLIR operation tx::RcsGemm, see Tx81Ops.td for detail.
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
-// The arguments list is aligned with TsmConv in Tx81Ops.td
+// The arguments list is aligned with RcsConv in Tx81Ops.td
 void __Gemm(int64_t *srcA, int64_t *srcB, int64_t *srcBias, int64_t *dst,
             int32_t *dims, bool enPsum, int64_t *psum, bool enTransA,
             bool enTransB, int64_t batchSizeA, int64_t batchSizeB,
@@ -20,8 +20,8 @@ void __Gemm(int64_t *srcA, int64_t *srcB, int64_t *srcBias, int64_t *dst,
             int64_t dstFmt) {
   INTRNISIC_RUN_SWITCH;
   // Create gemm command buffer.
-  TsmGemm *gemm = g_intrinsic()->gemm_pointer;
-  TsmNeInstr inst = {I_NEUR,
+  RcsGemm *gemm = g_intrinsic()->gemm_pointer;
+  RcsNeInstr inst = {I_NEUR,
                      {
                          0,
                      },
@@ -53,6 +53,6 @@ void __Gemm(int64_t *srcA, int64_t *srcB, int64_t *srcBias, int64_t *dst,
   }
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 }

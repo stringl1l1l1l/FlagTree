@@ -25,6 +25,11 @@ def Tx81ToLLVM : Pass<"tx81-to-llvm", "ModuleOp"> {
 
   let constructor = "triton::createTx81ToLLVMPass()";
 
+  let options = [
+    Option<"gatherScatterAsync", "gather-scatter-async", "bool", /*default*/"false",
+      "Use __GatherScatterAsync CRT runtime (TsmExecute without TsmWaitfinish)">
+  ];
+
   let dependentDialects = [
     "mlir::LLVM::LLVMDialect",
     "mlir::arith::ArithDialect",

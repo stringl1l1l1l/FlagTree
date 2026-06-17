@@ -1,11 +1,11 @@
 #include "op_reduce_mul_impl.h"
-#include "tx81.h"
+#include "tx81_run.h"
 #include <assert.h>
 
 void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
                         uint32_t reduce_dim, Data_Format fmt) {
-  TsmArith *arith = TsmNewArith();
-  TsmArithInstr arithIns = {I_CGRA, {0}, {0}};
+  RcsArith *arith = RcsNewArith();
+  RcsArithInstr arithIns = {I_CGRA, {0}, {0}};
 
   uint32_t n = shape.n;
   uint32_t h = shape.h;
@@ -32,7 +32,7 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
 
   if (reduce_dim == 0) {
 
-    TsmDataMoveInstr data_move_inst = {I_CGRA,
+    RcsDataMoveInstr data_move_inst = {I_CGRA,
                                        {
                                            0,
                                        },
@@ -43,7 +43,7 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
     int32_t nhw_cnt = n * h * w;
 
     if (cx_align == 1) {
-      TsmDataMove *data_move = TsmNewDataMove();
+      RcsDataMove *data_move = RcsNewDataMove();
       St_StrideIteration src_si = {1, 1, 1, 1, 1, 1};
       St_StrideIteration dst_si = {1, 1, 1, 1, 1, 1};
 
@@ -51,11 +51,11 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
                                nhw_cnt * cx_align_mem_size, &src_si, &dst_si);
 
       // Dispatch the command to accelerator
-      TsmExecute(&data_move_inst);
+      RcsExecute(&data_move_inst);
       SYNCHRONOUS_INTRINSIC_SWITCH;
 
       // Destroy the command buffer.
-      TsmDeleteDataMove(data_move);
+      RcsDeleteDataMove(data_move);
     }
 
     for (int32_t nhw_index = 0; nhw_index < nhw_cnt; nhw_index++) {
@@ -65,7 +65,7 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
           (uint64_t)out + (uint64_t)nhw_index * one_align_mem_size;
       // init src
       uint8_t bytes = get_dtype_size_new(fmt);
-      hybrid_value init_v = set_float2value(fmt, 1.0);
+      triton_hybrid_value init_v = set_float2value(fmt, 1.0);
       if (cx_align > c) {
 
         // op_reduce_micro_op_memset(src_in_addr + c * bytes, *(uint32_t
@@ -79,11 +79,11 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
               arith_src0_addr + (uint64_t)bytes * loop_index * align_val;
           uint64_t arith_dst_addr = arith_src0_addr;
 
-          // TsmArith *arith = (TsmArith *)getTsmOpPointer()->arith_pointer;
+          // RcsArith *arith = (RcsArith *)getRcsOpPointer()->arith_pointer;
 
           arith->MulVV(&arithIns, arith_src0_addr, arith_src1_addr,
                        arith_dst_addr, align_val, RND_NEAREST_EVEN, fmt);
-          TsmExecute(&arithIns);
+          RcsExecute(&arithIns);
           SYNCHRONOUS_INTRINSIC_SWITCH;
         }
       }
@@ -95,18 +95,18 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
         uint64_t arith_dst_addr =
             (stride == 1) ? dst_out_addr : arith_src0_addr;
 
-        // TsmArith *arith = (TsmArith *)getTsmOpPointer()->arith_pointer;
+        // RcsArith *arith = (RcsArith *)getRcsOpPointer()->arith_pointer;
 
         arith->MulVV(&arithIns, arith_src0_addr, arith_src1_addr,
                      arith_dst_addr, stride, RND_NEAREST_EVEN, fmt);
-        TsmExecute(&arithIns);
+        RcsExecute(&arithIns);
         SYNCHRONOUS_INTRINSIC_SWITCH;
       }
     }
   } else if (reduce_dim == 1) {
-    TsmDataMove *data_move = TsmNewDataMove();
+    RcsDataMove *data_move = RcsNewDataMove();
 
-    TsmDataMoveInstr data_move_inst = {I_CGRA,
+    RcsDataMoveInstr data_move_inst = {I_CGRA,
                                        {
                                            0,
                                        },
@@ -121,8 +121,8 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
           (uint64_t)in + (uint64_t)nh_index * cx_align_mem_size;
       uint64_t dst_out_addr =
           (uint64_t)out + (uint64_t)nh_index * cx_align_mem_size;
-      // TsmOperatorPointer *opp = getTsmOpPointer();
-      // TsmDataMove *data_move = (TsmDataMove *)opp->datamove_pointer;
+      // RcsOperatorPointer *opp = getRcsOpPointer();
+      // RcsDataMove *data_move = (RcsDataMove *)opp->datamove_pointer;
 
       // Create command buffer.
 
@@ -134,7 +134,7 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
                                &src_si, &dst_si);
 
       // Dispatch the command to accelerator
-      TsmExecute(&data_move_inst);
+      RcsExecute(&data_move_inst);
       SYNCHRONOUS_INTRINSIC_SWITCH;
 
       for (int32_t w_index = 1; w_index < w; w_index++) {
@@ -143,19 +143,19 @@ void op_reduce_mul_impl(void *in, void *out, Data_Shape shape,
             src_in_addr + (uint64_t)w_index * cx_align_mem_size;
         uint64_t arith_dst_addr = dst_out_addr;
 
-        // TsmArith *arith = (TsmArith *)getTsmOpPointer()->arith_pointer;
+        // RcsArith *arith = (RcsArith *)getRcsOpPointer()->arith_pointer;
 
         arith->MulVV(&arithIns, arith_src0_addr, arith_src1_addr,
                      arith_dst_addr, cx_align, RND_NEAREST_EVEN, fmt);
-        TsmExecute(&arithIns);
+        RcsExecute(&arithIns);
         SYNCHRONOUS_INTRINSIC_SWITCH;
       }
     }
     // Destroy the command buffer.
-    TsmDeleteDataMove(data_move);
+    RcsDeleteDataMove(data_move);
   } else {
     assert(0);
   }
 
-  TsmDeleteArith(arith);
+  RcsDeleteArith(arith);
 }

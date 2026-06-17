@@ -59,15 +59,16 @@ def RdmaOp : Tx81Op<"rdma", [
 
   let arguments = (
     ins
-    MemRefOrInt:$source,             // The source address in DDR
-    MemRefOrInt:$target,             // The target address in SPM
+    Arg<MemRefOrInt, "DDR source", [MemRead]>:$source,             // The source address in DDR
+    Arg<MemRefOrInt, "SPM target", [MemWrite]>:$target,             // The target address in SPM
     Variadic<Index>:$src_shape,      // src shape
     Variadic<Index>:$src_strides,    // src strides
     Variadic<Index>:$dst_shape,      // dst shape
     Variadic<Index>:$dst_strides,    // dst strides
     I32Attr:$rank,                   // rank
     I32Attr:$elem_bytes,             // elem bytes
-    I32Attr:$fmt                     // elem fmt
+    I32Attr:$fmt,                    // elem fmt
+    I64:$base_ddr_addr               // base DDR address (from func arg)
   );
 
   let results = (outs I64:$dst); // The dest address in SPM
@@ -84,15 +85,16 @@ def WdmaOp : Tx81Op<"wdma", [
 
   let arguments = (
     ins
-    MemRefOrInt:$source,             // The source address in DDR
-    MemRefOrInt:$target,             // The target address in SPM
+    Arg<MemRefOrInt, "SPM source", [MemRead]>:$source,             // The source address in DDR
+    Arg<MemRefOrInt, "DDR target", [MemWrite]>:$target,             // The target address in SPM
     Variadic<Index>:$src_shape,      // src shape
     Variadic<Index>:$src_strides,    // src strides
     Variadic<Index>:$dst_shape,      // dst shape
     Variadic<Index>:$dst_strides,    // dst strides
     I32Attr:$rank,                   // rank
     I32Attr:$elem_bytes,             // elem bytes
-    I32Attr:$fmt                     // elem fmt
+    I32Attr:$fmt,                    // elem fmt
+    I64:$base_ddr_addr               // base DDR address (from func arg)
   );
 
   let results = (outs I64:$dst); // The dest address in DDR
@@ -101,8 +103,8 @@ def WdmaOp : Tx81Op<"wdma", [
 def Rdma4dOp : Tx81Op<"rdma4d"> {
   let arguments = (
     ins
-    MemRefOrInt:$target,             // The target address in SPM
-    MemRefOrInt:$source,             // The source address in DDR
+    Arg<MemRefOrInt, "SPM target", [MemWrite]>:$target,             // The target address in SPM
+    Arg<MemRefOrInt, "DDR source", [MemRead]>:$source,             // The source address in DDR
     I32:$elem_count,
     I32:$stride0,
     I32:$iteration0,
@@ -119,8 +121,8 @@ def Rdma4dOp : Tx81Op<"rdma4d"> {
 def Wdma4dOp : Tx81Op<"wdma4d"> {
   let arguments = (
     ins
-    MemRefOrInt:$target,             // The target address in DDR
-    MemRefOrInt:$source,             // The source address in SPM
+    Arg<MemRefOrInt,"DDR target", [MemWrite]>:$target,             // The target address in DDR
+    Arg<MemRefOrInt, "SPM source", [MemRead]>:$source,             // The source address in SPM
     I32:$elem_count,
     I32:$stride0,
     I32:$iteration0,
@@ -137,10 +139,11 @@ def Wdma4dOp : Tx81Op<"wdma4d"> {
 def Rdma1dOp : Tx81Op<"rdma1d"> {
   let arguments = (
     ins
-    MemRefOrInt:$target,             // The target address in SPM
-    MemRefOrInt:$source,             // The source address in DDR
+    Arg<MemRefOrInt, "SPM target", [MemWrite]>:$target,             // The target address in SPM
+    Arg<MemRefOrInt, "DDR source", [MemRead]>:$source,             // The source address in DDR
     I32:$elem_count,
-    I32Attr:$fmt                     // elem fmt
+    I32Attr:$fmt,                    // elem fmt
+    I64:$base_ddr_addr               // base DDR address (from func arg)
   );
 
   let results = (outs);
@@ -149,10 +152,11 @@ def Rdma1dOp : Tx81Op<"rdma1d"> {
 def Wdma1dOp : Tx81Op<"wdma1d"> {
   let arguments = (
     ins
-    MemRefOrInt:$target,             // The target address in DDR
-    MemRefOrInt:$source,             // The source address in SPM
+    Arg<MemRefOrInt, "DDR target", [MemWrite]>:$target,             // The target address in DDR
+    Arg<MemRefOrInt, "SPM source", [MemRead]>:$source,             // The source address in SPM
     I32:$elem_count,
-    I32Attr:$fmt                     // elem fmt
+    I32Attr:$fmt,                    // elem fmt
+    I64:$base_ddr_addr               // base DDR address (from func arg)
   );
 
   let results = (outs);
@@ -952,7 +956,7 @@ def MemsetOp : Tx81Op<"memset", [
 
   let arguments = (
     ins
-    MemRefOrInt:$target,            // SPM address to be memset
+    Arg<MemRefOrInt,"SPM target", [MemWrite]>:$target,            // SPM address to be memset
     I32:$value,                  // Value to be written
     Variadic<Index>:$dst_shape,      // src shape
     Variadic<Index>:$dst_strides,    // src strides
@@ -1149,8 +1153,8 @@ def GatherScatter : Tx81Op<"gatherscatter", []> {
   let summary = "Transfer data in strides and iterations";
 
   let arguments = (ins
-    MemRefOrInt:$source,                 // The source
-    MemRefOrInt:$target,                 // The target
+    Arg<MemRefOrInt,"the source memref", [MemRead]>:$source,                 // The source
+    Arg<MemRefOrInt, "the target memref", [MemWrite]>:$target,                 // The target
     I32Attr:$bytes,                  // Inner loop data size in bytes
     I32Attr:$src_strideN,
     I32Attr:$src_strideH,
@@ -1173,6 +1177,20 @@ def BarrierOp : Tx81Op<"barrier"> {
   let description = [{
     The "barrier" op synchronizes all work items.
   }];
+  let assemblyFormat = "attr-dict";
+}
+
+def DistributeBarrierOp : Tx81Op<"distribute_barrier"> {
+  let summary = "Subgroup barrier with mesh topology";
+  let description = [{
+    The "distribute_barrier" op synchronizes only the tiles listed in
+    `mesh_physical_ids`.  Carries the TLE device_mesh topology through the
+    compiler pipeline and eventually lowers to __BarrierSubgroup().
+  }];
+  let arguments = (ins
+    DenseI32ArrayAttr:$mesh_physical_ids,
+    DenseI32ArrayAttr:$mesh_shape
+  );
   let assemblyFormat = "attr-dict";
 }
 
@@ -1265,7 +1283,8 @@ def RemoteStoreOp : Tx81Op<"remote_store", [MemoryEffects<[MemRead<GlobalMemory>
     MemRefOrInt:$dst,           // Remote destination base address
     MemRefOrInt:$src,           // Source buffer address (read from here)
     I32:$elem_bytes,            // Element size in bytes
-    I64:$data_size              // Total data size in bytes
+    I64:$data_size,             // Total data size in bytes
+    OptionalAttr<DenseI32ArrayAttr>:$mesh_physical_ids
   );
 
   let results = (outs);

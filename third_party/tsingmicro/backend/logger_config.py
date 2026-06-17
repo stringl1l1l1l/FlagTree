@@ -18,7 +18,7 @@ STANDARD_LEVEL_NAMES = {
 }
 
 
-def get_log_level_from_env(env_var='TX_LOG_LEVEL', default='info'):
+def get_log_level_from_env(env_var='TX_LAUNCH_LOG_LEVEL', default='error'):
     """
     Read log level from environment variable.
     Supports:

@@ -9,6 +9,7 @@ import hashlib
 import tempfile
 import os
 import re
+import sys
 import subprocess
 import functools
 from pathlib import Path
@@ -20,6 +21,8 @@ logger = setup_logger("tsingmicro_launch")
 ir_index = -1
 
 last_ir = ""
+# only enable on pipeline stage2
+GATHER_SCATTER_ASYNC_ENABLE = False
 
 
 # The riscv c header files and libraries path.
@@ -30,17 +33,17 @@ def _get_libc_root() -> str:
     return path
 
 
-def get_customized_ir() -> list:
-    env_value = os.getenv("CUSTOMIZED_IR")
-    if env_value is None:
-        return []
-    return [item.strip() for item in env_value.split(',') if item.strip()]
+def _get_core_dialects_to_mk_pass_arg() -> str:
+    value = os.getenv("PRECISION_MODE", "0").strip()
+    if value not in ("0", "1", "2"):
+        raise ValueError("PRECISION_MODE must be 0, 1, or 2")
+    return f"--core-dialects-to-mk=precision-mode={value}"
 
 
 # Build a accelerator controller ELF
 def compile_accelerator(src, metadata, o_path):
     # TODO : cache mechanism
-    name = f"kernel"
+    name = "kernel"
     key = hashlib.sha256(src.encode("utf-8")).hexdigest()
     cache = get_cache_manager(key)
     cache_path = cache.get_file(f"{name}.so")
@@ -48,18 +51,17 @@ def compile_accelerator(src, metadata, o_path):
     if cache_path is None:
         with tempfile.TemporaryDirectory() as tmpdir:
             dst_path = os.path.join(tmpdir, f"{name}.so")
-            gcc_path = os.path.join(txda_tools.get_tx8_deps_path("Xuantie-900-gcc-elf-newlib-x86_64-V2.10.2"), "bin",
-                                    "riscv64-unknown-elf-gcc")
-            libc_lib = os.path.join(txda_tools.get_tx8_deps_path("Xuantie-900-gcc-elf-newlib-x86_64-V2.10.2"),
-                                    "riscv64-unknown-elf", "lib", "rv64imfdc", "lp64d")
-            libgcc_lib = os.path.join(txda_tools.get_tx8_deps_path("Xuantie-900-gcc-elf-newlib-x86_64-V2.10.2"), "lib",
-                                      "gcc", "riscv64-unknown-elf", "10.4.0", "rv64imfdc", "lp64d")
+            xuantie_dir = txda_tools.get_tx8_deps_path(
+                "rcs1fw-rtt/tool/rcsfw-xuantie-sdk/Xuantie-900-gcc-elf-newlib-x86_64-V2.8.0")
+            gcc_path = os.path.join(xuantie_dir, "bin", "riscv64-unknown-elf-gcc")
+            libc_lib = os.path.join(xuantie_dir, "riscv64-unknown-elf", "lib", "rv64imfdc", "lp64d")
+            libgcc_lib = os.path.join(xuantie_dir, "lib", "gcc", "riscv64-unknown-elf", "10.4.0", "rv64imfdc", "lp64d")
             libvr_path = os.path.join(os.path.dirname(__file__), "lib")
             clang_path = txda_tools.get_llvm_bin_path("clang")
             lld_path = txda_tools.get_llvm_bin_path("ld.lld")
 
             # kuiper_lib = txda_tools.get_kuiper_path("lib")
-            tx8_lib = txda_tools.get_tx8_deps_path("lib")
+            tx8_lib = txda_tools.get_tx8_deps_path("rcs1fw-rtt/lib")
             # Build shared library for simulator or hardware
             if (os.getenv("USE_SIM_MODE", "0").lower() in ("1", "true", "yes")):
                 subprocess.check_call([
@@ -71,13 +73,13 @@ def compile_accelerator(src, metadata, o_path):
                     "-ltriton_cmodel", "-ltx8be_op_cmodel", "-Wl,--no-whole-archive", "-lm", "-o", dst_path
                 ])
             else:
-                # Link wrapper, kernel with Tx81 crt and intrinsics(libinstr_tx81.a)
+                # Link wrapper, kernel with Tx81 crt and intrinsics(libinstr_rcs1.a)
                 gcc_args = [
                     gcc_path, "-shared", "-march=rv64imfdc", "-O2", "-nostartfiles", "-Wl,--allow-shlib-undefined",
                     "-mabi=lp64d", "-Wl,--no-dynamic-linker",
                     # FIXME: Hardcoded path
                     f"{o_path}", f"-L{libvr_path}", f"-L{libc_lib}", f"-L{libgcc_lib}", f"-L{tx8_lib}",
-                    "-Wl,--start-group", "-lcommon_util", "-linstr_tx81",  # Tx81 intrinsic API
+                    "-Wl,--start-group", "-lcommon_util", "-linstr_rcs1",  # Tx81 intrinsic API
                     "-llibc_stub", "-lvr",  # Wrapper API of Tx81 intrinsic
                     "-Wl,--end-group", "-lm", "-Wl,--gc-sections", "-Wl,--unique=.rodata.name", "-lc", "-lgcc", "-o",
                     dst_path
@@ -86,6 +88,7 @@ def compile_accelerator(src, metadata, o_path):
                 # if txda_tools.is_use_profile():
                 #     gcc_args.append("-lprofiler_riscv")
 
+                txda_tools.dump_cmd_if_needed(gcc_args, "link_to_bin")
                 txda_tools.runLoweringCmd(dst_path, gcc_args)
 
             with open(dst_path, 'rb') as f:
@@ -100,7 +103,7 @@ def compile_accelerator(src, metadata, o_path):
         return so
 
 
-def _ttir_to_coreir(mod):
+def _ttir_to_coreir(mod, num_stages=2):
     global ir_index
     ir_index = ir_index + 1
     # Get Triton-MLIR as string
@@ -113,15 +116,23 @@ def _ttir_to_coreir(mod):
         triton_opt_path = txda_tools.get_tsm_opt_path()
         txda_tools.dump_ir_if_needed([src_path])
 
-        coreir_to_mk_mode = "--core-dialects-to-mk"
-        if os.getenv("PRECISION_PRIORITY", "0").lower() in ("1", "true", "yes"):
-            coreir_to_mk_mode = "--core-dialects-to-mk=precision-priority"
+        coreir_to_mk_mode = _get_core_dialects_to_mk_pass_arg()
+        pipeline_flag = f"--mk-pipeline=num-stages={num_stages}" if num_stages > 1 else None
 
         args = [
             triton_opt_path, src_path, "--triton-to-core-dialects", "--tle-to-mk", "--dsa-memory-to-core",
             "--linalg-tiling", f"{coreir_to_mk_mode}", "--linalg-fusion", "--legalize-tensor-form-loops",
-            "--one-shot-bufferize", "--convert-bufferization-to-memref", "--cse", "--canonicalize"
+            "--one-shot-bufferize", "--convert-bufferization-to-memref", "--materialize-strided-linalg-inputs", "--cse",
+            "--canonicalize"
         ]
+        if pipeline_flag is not None:
+            args.append(pipeline_flag)
+            args.append("--mk-loop-bound-canonicalize")
+            args.append("--cse")
+            args.append("--canonicalize")
+            global GATHER_SCATTER_ASYNC_ENABLE
+            GATHER_SCATTER_ASYNC_ENABLE = True
+
         if os.getenv("TRITON_DEBUG", "0") == "1":
             args.append("--mlir-print-debuginfo")
         if os.getenv("MLIR_ENABLE_DUMP", "0") == "1":
@@ -173,9 +184,16 @@ def _coreir_to_txir(mod):
         txda_tools.dump_ir_if_needed([src_path])
 
         args = [
-            triton_opt_path, src_path, "--spmd-allocate-shared-memory", "--expand-strided-metadata",
+            triton_opt_path,
+            src_path,
+            "--spmd-allocate-shared-memory",
+            "--expand-strided-metadata",
             "--lower-affine",  # convert affine.load to memref.load, need exec before tx81-to-llvm since we will support spm offset to memref.load
-            "--mk-to-tx81", "--cse"  # unused memref.subview/memref.reinterpret
+            "--mk-to-tx81",
+            "--tx81-insert-barrier",
+            "--tx81-resolve-dma-base-addr",
+            "--cse",  # unused memref.subview/memref.reinterpret
+            "--canonicalize",
         ]
         if os.getenv("TRITON_DEBUG", "0") == "1":
             args.append("--mlir-print-debuginfo")
@@ -228,8 +246,12 @@ def _txir_to_llir(mod, metadata):
             args.append("--mlir-print-ir-after-all")
 
         # other pass
+        tx81_to_llvm = "--tx81-to-llvm"
+        if GATHER_SCATTER_ASYNC_ENABLE:
+            tx81_to_llvm = "--tx81-to-llvm=gather-scatter-async=true"
+
         args += [
-            "--tx81-to-llvm", "--convert-arith-to-llvm",  # need exec last since arith.const conversion
+            tx81_to_llvm, "--convert-arith-to-llvm",  # need exec last since arith.const conversion
             # Remove all unrealized casts created
             "--reconcile-unrealized-casts", "--canonicalize", "--export-kernel-symbols", "-o", llvmir_path
         ]
@@ -238,7 +260,7 @@ def _txir_to_llir(mod, metadata):
         txda_tools.runLoweringCmd(llvmir_path, args)
         txda_tools.dump_ir_if_needed([llvmir_path])
 
-        custom_ir = get_customized_ir()
+        custom_ir = txda_tools.get_customized_ir()
         if custom_ir:
             dest_name = ""
             for ir_file in custom_ir:
@@ -251,14 +273,7 @@ def _txir_to_llir(mod, metadata):
                 else:
                     logger.error(f"error name {ir_file}: use customized ir like this : test_0.mlir, test_1.mlir")
             if dest_name:
-                logger.info(f"get CUSTOMIZED_IR path:{dest_name}")
-                dump_path = os.getenv("TRITON_DUMP_PATH", "")
-
-                if not dump_path:
-                    logger.error("TRITON_DUMP_PATH not find!")
-                    return
-
-                cust_ir = os.path.join(dump_path, dest_name)
+                cust_ir = txda_tools.get_customized_ir_file(dest_name)
                 if os.path.exists(cust_ir):
                     llvmir_path = cust_ir
                     logger.info(f"!!!!!!!!!!!!!!!!!!using customized ir:{llvmir_path}")
@@ -356,14 +371,14 @@ def _llir_to_bin(llir: str, metadata):
     with tempfile.TemporaryDirectory() as tmpdir:
         src_path = os.path.join(tmpdir, f"kernel_{ir_index}.ll")
         # FIXME: Hardcoded path
-        #dst_path = os.path.join(tmpdir, "kernel.so")
+        # dst_path = os.path.join(tmpdir, "kernel.so")
         dst_path = os.path.join(tmpdir, f"kernel_{ir_index}.o")
-        #dst_path = f"/tmp/kernel_{ir_index}.o"
+        # dst_path = f"/tmp/kernel_{ir_index}.o"
         Path(src_path).write_text(llir)
         txda_tools.dump_ir_if_needed([src_path])
         clang_path = txda_tools.get_llvm_bin_path("clang++")
 
-        compile_args = [clang_path, src_path, "-O2", "-c", "-fPIC", "-o", dst_path]
+        compile_args = [clang_path, src_path, "-O2", "-c", "-fPIC", "-Wno-override-module", "-o", dst_path]
 
         # Add RISC-V specific flags when not in simulation mode
         if not sim_mode:
@@ -375,6 +390,7 @@ def _llir_to_bin(llir: str, metadata):
         txda_tools.runLoweringCmd(dst_path, compile_args)
 
         txda_tools.dump_ir_if_needed([dst_path])
+        txda_tools.dump_cmd_if_needed(compile_args, "clang++")
 
         # compile kernel and intrinsic wrapper to shared library
         return compile_accelerator(llir, metadata, dst_path)
@@ -386,7 +402,7 @@ class TXDAOptions:
     arch: str = None
     num_warps: int = 0
     num_ctas: int = 0
-    num_stages: int = 1
+    num_stages: int = 0  # ping-pong default, enable on flag_gems auto_tune config
     num_buffers_warp_spec: int = 0
     num_consumer_groups: int = 0
     reg_dec_producer: int = 0
@@ -456,8 +472,15 @@ class TXDABackend(BaseBackend):
         return mod
 
     def add_stages(self, stages, options):
+        if os.getenv("USE_OUTSIDE_LLVM_TX81", "1").lower() in ("1", "true", "yes"):
+            llvm_path = txda_tools.get_llvm_system_path()
+            mlir_path = llvm_path + "python_packages/mlir_core/"
+            if mlir_path not in sys.path:
+                sys.path.insert(0, mlir_path)
+            bin_path = llvm_path + "/bin"
+            os.environ["PATH"] += os.pathsep + bin_path
         stages["ttir"] = lambda src, metadata: self.make_ttir(src, metadata, options)
-        stages["coreir"] = lambda src, metadata: _optimize_coreir(_ttir_to_coreir(src))
+        stages["coreir"] = lambda src, metadata: _optimize_coreir(_ttir_to_coreir(src, num_stages=options.num_stages))
         # stages["mkir"] = lambda src, metadata: _optimize_mkir(_coreir_to_mkir(src))
         stages["txir"] = lambda src, metadata: _optimize_txir(_coreir_to_txir(src))
         stages["llir"] = lambda src, metadata: _optimize_llir(_txir_to_llir(src, metadata))
@@ -471,4 +494,5 @@ class TXDABackend(BaseBackend):
     def get_module_map(self) -> Dict[str, ModuleType]:
         # FIXME: Need change folder name from cpu into tsingmicro
         from triton.language.extra.txda import libdevice
+
         return {"triton.language.extra.libdevice": libdevice}

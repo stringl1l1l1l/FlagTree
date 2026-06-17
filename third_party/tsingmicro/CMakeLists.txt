@@ -24,9 +24,9 @@ if(NOT DEFINED ENABLE_PROFILING)
   endif()
 endif()
 
-if(NOT DEFINED NO_INTRNISIC_RUN)
-  if(DEFINED ENV{NO_INTRNISIC_RUN})
-    set(NO_INTRNISIC_RUN $ENV{NO_INTRNISIC_RUN})
+if(NOT DEFINED ENABLE_NO_INTRINSIC_RUN)
+  if(DEFINED ENV{ENABLE_NO_INTRINSIC_RUN})
+    set(ENABLE_NO_INTRINSIC_RUN $ENV{ENABLE_NO_INTRINSIC_RUN})
   endif()
 endif()
 
@@ -36,16 +36,26 @@ if(NOT DEFINED ENABLE_SYNCHRONOUS_INTRINSIC)
   endif()
 endif()
 
+if(NOT DEFINED ENABLE_DEBUG_DUMP_DATA)
+  if(DEFINED ENV{ENABLE_DEBUG_DUMP_DATA})
+    set(ENABLE_DEBUG_DUMP_DATA $ENV{ENABLE_DEBUG_DUMP_DATA})
+  endif()
+endif()
+
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-set(XUANTIE_NAME Xuantie-900-gcc-elf-newlib-x86_64-V2.10.2)
+set(XUANTIE_DIR ${TX8_DEPS_ROOT}/rcs1fw-rtt/tool/rcsfw-xuantie-sdk/Xuantie-900-gcc-elf-newlib-x86_64-V2.8.0)
 set(INSTALL_TSINGMICRO_DIR ${CMAKE_INSTALL_PREFIX}/triton/backends/tsingmicro/)
 install(CODE "file(MAKE_DIRECTORY \"${INSTALL_TSINGMICRO_DIR}\")")
 
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 include_directories(${CMAKE_CURRENT_BINARY_DIR}/include)
 include_directories(${CMAKE_CURRENT_SOURCE_DIR}/crt/include)
-include_directories(${TX8_DEPS_ROOT}/include)
+
+include_directories(${TX8_DEPS_ROOT}/rcs1fw-rtt/rcs1-intrisic/instr_rcs1/include)
+include_directories(${TX8_DEPS_ROOT}/rcs1fw-rtt/rcs1-intrisic/common/include)
+include_directories(${TX8_DEPS_ROOT}/rcs1fw-rtt/include/components/oplib_rcs1/riscv/riscv/include)
+include(${TX8_DEPS_ROOT}/rcs1fw-rtt/rcsfw_include_interface.cmake)
 
 include_directories(${CMAKE_SOURCE_DIR}/third_party/flir/include)
 include_directories(${CMAKE_SOURCE_DIR}/third_party/flir/tools)

@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __GatherScatter(uint64_t *src, uint64_t *dst, uint32_t bytes,
                      uint32_t src_strideN, uint32_t src_strideH,
@@ -20,8 +20,8 @@ void __GatherScatter(uint64_t *src, uint64_t *dst, uint32_t bytes,
                      uint32_t dst_iterH, uint32_t dst_iterW) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmDataMove *cmd = g_intrinsic()->datamove_pointer;
-  TsmDataMoveInstr inst = {I_CGRA,
+  RcsDataMove *cmd = g_intrinsic()->datamove_pointer;
+  RcsDataMoveInstr inst = {I_CGRA,
                            {
                                0,
                            },
@@ -38,7 +38,8 @@ void __GatherScatter(uint64_t *src, uint64_t *dst, uint32_t bytes,
                      &dst_si);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
-  TsmWaitfinish();
+  RcsExecute(&inst);
+  RcsWaitfinish();
+  // SYNCHRONOUS_INTRINSIC_SWITCH;
   // Destroy the command buffer.
 }

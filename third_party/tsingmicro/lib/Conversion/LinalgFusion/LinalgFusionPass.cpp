@@ -51,6 +51,7 @@ public:
       RewritePatternSet selfPatterns(context);
 
       mlir::triton::populateLinalgBinaryOpFusionPatterns(selfPatterns);
+      mlir::triton::populateLinalgTypeConversionFusionPatterns(selfPatterns);
 
       if (failed(applyPatternsGreedily(module, std::move(selfPatterns)))) {
         signalPassFailure();

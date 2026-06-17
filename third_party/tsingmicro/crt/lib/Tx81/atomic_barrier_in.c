@@ -10,7 +10,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __AtomicBarrierIn() {
 #ifdef USE_SIM_MODE

@@ -9,15 +9,15 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 
 void __Bilinear(uint64_t *src, uint64_t *dst, uint16_t src_n, uint16_t src_h,
                 uint16_t src_w, uint16_t src_c, uint16_t dst_n, uint16_t dst_h,
                 uint16_t dst_w, uint16_t dst_c, uint16_t fmt) {
   INTRNISIC_RUN_SWITCH;
   // Create command buffer.
-  TsmPeripheral *cmd = g_intrinsic()->peripheral_pointer;
-  TsmPeripheralInstr inst = {I_CGRA,
+  RcsPeripheral *cmd = g_intrinsic()->peripheral_pointer;
+  RcsPeripheralInstr inst = {I_CGRA,
                              {
                                  0,
                              },
@@ -33,7 +33,7 @@ void __Bilinear(uint64_t *src, uint64_t *dst, uint16_t src_n, uint16_t src_h,
                 (Data_Format)fmt);
 
   // Dispatch the command to accelerator
-  TsmExecute(&inst);
+  RcsExecute(&inst);
   SYNCHRONOUS_INTRINSIC_SWITCH;
 
   // Destroy the command buffer.

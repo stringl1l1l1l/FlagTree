@@ -9,7 +9,7 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "tx81.h"
+#include "tx81_run.h"
 #include <stdio.h>
 
 void __ChannelNorm(uint64_t *src, uint64_t *dst, uint16_t n, uint16_t h,
@@ -19,8 +19,8 @@ void __ChannelNorm(uint64_t *src, uint64_t *dst, uint16_t n, uint16_t h,
   int dtype_size = bit_width / 8;
   int cx = c / calign_base;
 
-  TsmDataMove *dm = g_intrinsic()->datamove_pointer;
-  TsmDataMoveInstr dm_param = {I_CGRA,
+  RcsDataMove *dm = g_intrinsic()->datamove_pointer;
+  RcsDataMoveInstr dm_param = {I_CGRA,
                                {
                                    0,
                                },
@@ -51,8 +51,9 @@ void __ChannelNorm(uint64_t *src, uint64_t *dst, uint16_t n, uint16_t h,
 
     dm->GatherScatter(&dm_param, (uint64_t)src, (uint64_t)dst, elem_size,
                       &src_it, &dst_it);
-    TsmExecute(&dm_param);
-    TsmWaitfinish();
+    RcsExecute(&dm_param);
+    // RcsWaitfinish();
+    SYNCHRONOUS_INTRINSIC_SWITCH;
   }
 
   // align c0
@@ -78,8 +79,9 @@ void __ChannelNorm(uint64_t *src, uint64_t *dst, uint16_t n, uint16_t h,
 
     dm->GatherScatter(&dm_param, (uint64_t)src + src_offset,
                       (uint64_t)dst + dst_offset, elem_size, &src_it, &dst_it);
-    TsmExecute(&dm_param);
-    TsmWaitfinish();
+    RcsExecute(&dm_param);
+    // RcsWaitfinish();
+    SYNCHRONOUS_INTRINSIC_SWITCH;
   }
 }
 
@@ -90,8 +92,8 @@ void __DechannelNorm(uint64_t *src, uint64_t *dst, uint16_t n, uint16_t h,
   int dtype_size = bit_width / 8;
   int cx = c / calign_base;
 
-  TsmDataMove *dm = g_intrinsic()->datamove_pointer;
-  TsmDataMoveInstr dm_param = {I_CGRA,
+  RcsDataMove *dm = g_intrinsic()->datamove_pointer;
+  RcsDataMoveInstr dm_param = {I_CGRA,
                                {
                                    0,
                                },
@@ -123,8 +125,9 @@ void __DechannelNorm(uint64_t *src, uint64_t *dst, uint16_t n, uint16_t h,
 
     dm->GatherScatter(&dm_param, (uint64_t)src, (uint64_t)dst, elem_size,
                       &src_it, &dst_it);
-    TsmExecute(&dm_param);
-    TsmWaitfinish();
+    RcsExecute(&dm_param);
+    // RcsWaitfinish();
+    SYNCHRONOUS_INTRINSIC_SWITCH;
   }
 
   // align c0
@@ -150,7 +153,8 @@ void __DechannelNorm(uint64_t *src, uint64_t *dst, uint16_t n, uint16_t h,
 
     dm->GatherScatter(&dm_param, (uint64_t)src + src_offset,
                       (uint64_t)dst + dst_offset, elem_size, &src_it, &dst_it);
-    TsmExecute(&dm_param);
-    TsmWaitfinish();
+    RcsExecute(&dm_param);
+    // RcsWaitfinish();
+    SYNCHRONOUS_INTRINSIC_SWITCH;
   }
 }

@@ -10,11 +10,12 @@ add_subdirectory(CoreDialectsToMK)
 add_subdirectory(LegalizeTensorFormLoops)
 add_subdirectory(LinalgTiling)
 add_subdirectory(LinalgFusion)
+add_subdirectory(MKPipeline)
 add_subdirectory(AllocateSharedMemory)
 add_subdirectory(ExportKernelSymbols)
-add_subdirectory(TLEToMK)
 add_subdirectory(UnstructuredToMK)
 add_subdirectory(ReconcilePtrCasts)
+add_subdirectory(TLEToMK)
 
 # in flir
 # add_subdirectory(TritonToLinalg)
