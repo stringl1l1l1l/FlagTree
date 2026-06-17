@@ -11,15 +11,13 @@ import torch
 from transformers import AutoConfig, AutoModelForCausalLM, AutoTokenizer
 
 try:
-    from ..kernels import add_rms_inv_scale, attention, attention_decode, attention_ws, embedding, gate_up_silu
+    from ..kernels import attention_decode, attention_ws, embedding, fused_add_rms_norm
     from ..kernels import head_rmsnorm_rope
-    from ..kernels import linear, linear_add, qkv_linear
-    from ..kernels import rms_inv_scale, store_cache
+    from ..kernels import linear, lm_head, qkv_linear, rms_norm, silu_and_mul_out, store_cache
 except ImportError:  # pragma: no cover - supports direct script execution from mega/
-    from kernels import add_rms_inv_scale, attention, attention_decode, attention_ws, embedding, gate_up_silu
+    from kernels import attention_decode, attention_ws, embedding, fused_add_rms_norm
     from kernels import head_rmsnorm_rope
-    from kernels import linear, linear_add, qkv_linear
-    from kernels import rms_inv_scale, store_cache
+    from kernels import linear, lm_head, qkv_linear, rms_norm, silu_and_mul_out, store_cache
 
 from .config import Qwen3TLEConfig
 from .weights import LinearWeights, Qwen3Weights, extract_qwen3_weights
@@ -67,12 +65,12 @@ class Qwen3TLEEngine:
         device: torch.device,
         dtype: torch.dtype,
         max_seq_len: int,
-        attention_backend: str = "base",
+        attention_backend: str = "ws",
     ) -> None:
         if dtype is not torch.bfloat16:
             raise ValueError("Qwen3TLEEngine currently supports bf16 only")
-        if attention_backend not in ("base", "ws"):
-            raise ValueError(f"attention_backend must be 'base' or 'ws', got {attention_backend!r}")
+        if attention_backend != "ws":
+            raise ValueError(f"attention_backend must be 'ws', got {attention_backend!r}")
         self.config = config
         self.weights = weights
         self.tokenizer = tokenizer
@@ -93,7 +91,7 @@ class Qwen3TLEEngine:
         max_seq_len: int | None = None,
         trust_remote_code: bool = False,
         local_files_only: bool = False,
-        attention_backend: str = "base",
+        attention_backend: str = "ws",
     ) -> "Qwen3TLEEngine":
         torch_dtype = _parse_dtype(dtype)
         torch_device = torch.device(device)
@@ -149,37 +147,34 @@ class Qwen3TLEEngine:
             self.cache = KVCache(k=k_cache, v=v_cache, batch_size=batch_size, max_seq_len=max_len)
         self.cache.past_len = 0
 
-    def _linear(self, x: torch.Tensor, weights: LinearWeights, input_scale: torch.Tensor | None = None) -> torch.Tensor:
-        return linear(x.contiguous(), weights.weight, weights.bias, input_scale=input_scale)
+    def _linear(self, x: torch.Tensor, weights: LinearWeights) -> torch.Tensor:
+        return linear(x.contiguous(), weights.weight, weights.bias)
 
-    def _linear_add(self, x: torch.Tensor, weights: LinearWeights, residual: torch.Tensor) -> torch.Tensor:
-        return linear_add(x.contiguous(), weights.weight, weights.bias, residual.contiguous())
+    def _lm_head(self, x: torch.Tensor, weights: LinearWeights) -> torch.Tensor:
+        return lm_head(x.contiguous(), weights.weight, weights.bias)
 
-    def _add_rms_inv_scale(self, x: torch.Tensor, residual: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        return add_rms_inv_scale(x.contiguous(), residual.contiguous(), self.config.rms_norm_eps)
+    def _rms_norm(self, x: torch.Tensor, weight: torch.Tensor) -> torch.Tensor:
+        return rms_norm(x.contiguous(), (self.config.hidden_size, ), weight, self.config.rms_norm_eps)
 
-    def _rms_inv_scale(self, x: torch.Tensor) -> torch.Tensor:
-        return rms_inv_scale(x.contiguous(), self.config.rms_norm_eps)
-
-    def _qkv_linear(
+    def _fused_add_rms_norm(
         self,
         x: torch.Tensor,
-        weights: LinearWeights,
-        input_scale: torch.Tensor | None = None,
-    ) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        residual: torch.Tensor,
+        weight: torch.Tensor,
+    ) -> tuple[torch.Tensor, torch.Tensor]:
+        return fused_add_rms_norm(x.contiguous(), residual.contiguous(), (self.config.hidden_size, ), weight,
+                                  self.config.rms_norm_eps)
+
+    def _qkv_linear(self, x: torch.Tensor, weights: LinearWeights) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         q_dim = self.config.num_attention_heads * self.config.head_dim
         kv_dim = self.config.num_key_value_heads * self.config.head_dim
-        return qkv_linear(x.contiguous(), weights.weight, weights.bias, q_dim=q_dim, kv_dim=kv_dim,
-                          input_scale=input_scale)
+        return qkv_linear(x.contiguous(), weights.weight, weights.bias, q_dim=q_dim, kv_dim=kv_dim)
 
-    def _gate_up_silu(
-        self,
-        x: torch.Tensor,
-        weights: LinearWeights,
-        input_scale: torch.Tensor | None = None,
-    ) -> torch.Tensor:
-        return gate_up_silu(x.contiguous(), weights.weight, weights.bias, intermediate_size=self.config.intermediate_size,
-                            input_scale=input_scale)
+    def _mlp_activation(self, x: torch.Tensor, weights: LinearWeights) -> torch.Tensor:
+        packed = self._linear(x, weights)
+        gate, up = packed.split((self.config.intermediate_size, self.config.intermediate_size), dim=-1)
+        out = torch.empty_like(gate)
+        return silu_and_mul_out(gate, up, out)
 
     def _attention(
         self,
@@ -192,22 +187,18 @@ class Qwen3TLEEngine:
         kv_len: int,
         sm_scale: float,
     ) -> torch.Tensor:
-        if self.attention_backend == "ws" and q_len == 1:
+        if q_len == 1:
             fn = attention_decode
-        elif self.attention_backend == "ws":
-            fn = attention_ws
         else:
-            fn = attention
+            fn = attention_ws
         return fn(q, k_cache, v_cache, q_len=q_len, start_pos=start_pos, kv_len=kv_len, sm_scale=sm_scale)
 
     def _run_layer(
         self,
         x: torch.Tensor,
+        residual: torch.Tensor | None,
         layer_idx: int,
         start_pos: int,
-        *,
-        input_scale: torch.Tensor | None = None,
-        has_next_layer: bool = False,
     ) -> tuple[torch.Tensor, torch.Tensor | None]:
         assert self.cache is not None
         layer = self.weights.layers[layer_idx]
@@ -216,8 +207,14 @@ class Qwen3TLEEngine:
         q_dim = self.config.num_attention_heads * self.config.head_dim
         x_flat = x.reshape(tokens, hidden).contiguous()
 
-        input_scale = input_scale if input_scale is not None else self._rms_inv_scale(x_flat)
-        q_flat, k_flat, v_flat = self._qkv_linear(x_flat, layer.qkv_proj, input_scale)
+        if residual is None:
+            residual_flat = x_flat
+            hidden_flat = self._rms_norm(x_flat, layer.input_norm_weight)
+        else:
+            residual_flat = residual.reshape(tokens, hidden).contiguous()
+            hidden_flat, residual_flat = self._fused_add_rms_norm(x_flat, residual_flat, layer.input_norm_weight)
+
+        q_flat, k_flat, v_flat = self._qkv_linear(hidden_flat, layer.qkv_proj)
         q = q_flat.view(tokens, self.config.num_attention_heads, self.config.head_dim)
         k = k_flat.view(tokens, self.config.num_key_value_heads, self.config.head_dim)
         v = v_flat.view(tokens, self.config.num_key_value_heads, self.config.head_dim)
@@ -241,15 +238,10 @@ class Qwen3TLEEngine:
         attn_flat = attn.reshape(tokens, q_dim).contiguous()
         attn_out = self._linear(attn_flat, layer.o_proj)
 
-        residual, post_scale = self._add_rms_inv_scale(attn_out, x_flat)
-        hidden_act = self._gate_up_silu(residual, layer.gate_up_proj, post_scale)
-        if has_next_layer:
-            mlp_out = self._linear(hidden_act, layer.down_proj)
-            out, next_input_scale = self._add_rms_inv_scale(mlp_out, residual)
-        else:
-            out = self._linear_add(hidden_act, layer.down_proj, residual)
-            next_input_scale = None
-        return out.view(batch_size, q_len, hidden), next_input_scale
+        hidden_flat, residual_flat = self._fused_add_rms_norm(attn_out, residual_flat, layer.post_norm_weight)
+        hidden_act = self._mlp_activation(hidden_flat, layer.gate_up_proj)
+        out = self._linear(hidden_act, layer.down_proj)
+        return out.view(batch_size, q_len, hidden), residual_flat.view(batch_size, q_len, hidden)
 
     @torch.inference_mode()
     def forward_chunk(self, input_ids: torch.Tensor, *, start_pos: int) -> torch.Tensor:
@@ -268,19 +260,17 @@ class Qwen3TLEEngine:
 
         x = embedding(input_ids.reshape(-1), self.weights.embed_tokens)
         x = x.view(batch_size, q_len, self.config.hidden_size)
-        input_scale = None
+        residual = None
         for layer_idx in range(self.config.num_hidden_layers):
-            x, input_scale = self._run_layer(
-                x,
-                layer_idx,
-                start_pos,
-                input_scale=input_scale,
-                has_next_layer=layer_idx + 1 < self.config.num_hidden_layers,
-            )
+            x, residual = self._run_layer(x, residual, layer_idx, start_pos)
 
         last_hidden = x[:, -1, :].contiguous().view(batch_size, self.config.hidden_size)
-        final_scale = self._rms_inv_scale(last_hidden)
-        return self._linear(last_hidden, self.weights.lm_head, final_scale)
+        if residual is None:
+            last_hidden = self._rms_norm(last_hidden, self.weights.final_norm_weight)
+        else:
+            last_residual = residual[:, -1, :].contiguous().view(batch_size, self.config.hidden_size)
+            last_hidden, _ = self._fused_add_rms_norm(last_hidden, last_residual, self.weights.final_norm_weight)
+        return self._lm_head(last_hidden, self.weights.lm_head)
 
     @torch.inference_mode()
     def prefill(self, input_ids: torch.Tensor) -> torch.Tensor:

@@ -183,3 +183,241 @@ def store_cache(src: torch.Tensor, cache: torch.Tensor, *, q_len: int, start_pos
         START_POS=start_pos,
         BLOCK_D=block_d,
     )
+
+
+@triton.jit
+def _apply_rotary_pos_emb_kernel(
+    oq_ptr,
+    ok_ptr,
+    q_ptr,
+    k_ptr,
+    cos_ptr,
+    sin_ptr,
+    pos_ptr,
+    q_stride_s,
+    q_stride_h,
+    q_stride_d,
+    k_stride_s,
+    k_stride_h,
+    k_stride_d,
+    oq_stride_s,
+    oq_stride_h,
+    oq_stride_d,
+    ok_stride_s,
+    ok_stride_h,
+    ok_stride_d,
+    p_stride_s,
+    cos_stride_s,
+    sin_stride_s,
+    seq_len: tl.constexpr,
+    num_q_heads: tl.constexpr,
+    num_k_heads: tl.constexpr,
+    head_dim: tl.constexpr,
+    padded_head_dim: tl.constexpr,
+    rotary_interleaved: tl.constexpr,
+    max_position_embeddings: tl.constexpr,
+):
+    s_id = tl.program_id(0)
+    if pos_ptr is None:
+        pos_id = s_id % seq_len
+    else:
+        pos_id = tl.load(pos_ptr + s_id * p_stride_s)
+    cos_ptr += pos_id * cos_stride_s
+    sin_ptr += pos_id * sin_stride_s
+    tl.device_assert(pos_id < max_position_embeddings, "position id out of bound")
+
+    ordered_block = tl.arange(0, padded_head_dim)
+    mask = ordered_block < head_dim
+    if rotary_interleaved:
+        odd_mask = ordered_block % 2 == 0
+        rotated_block = tl.where(odd_mask, ordered_block + 1, ordered_block - 1)
+        sin_cos_block = ordered_block // 2
+        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+        sin = tl.where(odd_mask, -sin, sin)
+    else:
+        rotated_block = (ordered_block + head_dim // 2) % head_dim
+        sin_cos_block = ordered_block % (head_dim // 2)
+        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+        sin = tl.where(rotated_block < head_dim // 2, sin, -sin)
+
+    oq_ptr += s_id * oq_stride_s
+    q_ptr += s_id * q_stride_s
+    for off_h in tl.static_range(0, num_q_heads):
+        ordered_cols = off_h * q_stride_h + ordered_block * q_stride_d
+        rotated_cols = off_h * q_stride_h + rotated_block * q_stride_d
+        output_offs = off_h * oq_stride_h + ordered_block * oq_stride_d
+        q = tl.load(q_ptr + ordered_cols, mask=mask, other=0.0)
+        rotated_q = tl.load(q_ptr + rotated_cols, mask=mask, other=0.0)
+        tl.store(oq_ptr + output_offs, q * cos + rotated_q * sin, mask=mask)
+
+    ok_ptr += s_id * ok_stride_s
+    k_ptr += s_id * k_stride_s
+    for off_h in tl.static_range(0, num_k_heads):
+        ordered_cols = off_h * k_stride_h + ordered_block * k_stride_d
+        rotated_cols = off_h * k_stride_h + rotated_block * k_stride_d
+        output_offs = off_h * ok_stride_h + ordered_block * ok_stride_d
+        k = tl.load(k_ptr + ordered_cols, mask=mask, other=0.0)
+        rotated_k = tl.load(k_ptr + rotated_cols, mask=mask, other=0.0)
+        tl.store(ok_ptr + output_offs, k * cos + rotated_k * sin, mask=mask)
+
+
+@triton.jit
+def _apply_rotary_pos_emb_inplace_kernel(
+    q_ptr,
+    k_ptr,
+    cos_ptr,
+    sin_ptr,
+    pos_ptr,
+    q_stride_s,
+    q_stride_h,
+    q_stride_d,
+    k_stride_s,
+    k_stride_h,
+    k_stride_d,
+    p_stride_s,
+    cos_stride_s,
+    sin_stride_s,
+    seq_len: tl.constexpr,
+    num_q_heads: tl.constexpr,
+    num_k_heads: tl.constexpr,
+    head_dim: tl.constexpr,
+    padded_head_dim: tl.constexpr,
+    rotary_interleaved: tl.constexpr,
+    max_position_embeddings: tl.constexpr,
+):
+    s_id = tl.program_id(0)
+    if pos_ptr is None:
+        pos_id = s_id % seq_len
+    else:
+        pos_id = tl.load(pos_ptr + s_id * p_stride_s)
+    cos_ptr += pos_id * cos_stride_s
+    sin_ptr += pos_id * sin_stride_s
+    tl.device_assert(pos_id < max_position_embeddings, "position id out of bound")
+
+    ordered_block = tl.arange(0, padded_head_dim)
+    mask = ordered_block < head_dim
+    if rotary_interleaved:
+        odd_mask = ordered_block % 2 == 0
+        rotated_block = tl.where(odd_mask, ordered_block + 1, ordered_block - 1)
+        sin_cos_block = ordered_block // 2
+        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+        sin = tl.where(odd_mask, -sin, sin)
+    else:
+        rotated_block = (ordered_block + head_dim // 2) % head_dim
+        sin_cos_block = ordered_block % (head_dim // 2)
+        cos = tl.load(cos_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+        sin = tl.load(sin_ptr + sin_cos_block, mask=mask, other=0.0).to(tl.float32)
+        sin = tl.where(rotated_block < head_dim // 2, sin, -sin)
+
+    q_ptr += s_id * q_stride_s
+    for off_h in tl.static_range(0, num_q_heads):
+        ordered_cols = off_h * q_stride_h + ordered_block * q_stride_d
+        rotated_cols = off_h * q_stride_h + rotated_block * q_stride_d
+        q = tl.load(q_ptr + ordered_cols, mask=mask, other=0.0)
+        rotated_q = tl.load(q_ptr + rotated_cols, mask=mask, other=0.0)
+        tl.store(q_ptr + ordered_cols, q * cos + rotated_q * sin, mask=mask)
+
+    k_ptr += s_id * k_stride_s
+    for off_h in tl.static_range(0, num_k_heads):
+        ordered_cols = off_h * k_stride_h + ordered_block * k_stride_d
+        rotated_cols = off_h * k_stride_h + rotated_block * k_stride_d
+        k = tl.load(k_ptr + ordered_cols, mask=mask, other=0.0)
+        rotated_k = tl.load(k_ptr + rotated_cols, mask=mask, other=0.0)
+        tl.store(k_ptr + ordered_cols, k * cos + rotated_k * sin, mask=mask)
+
+
+def apply_rotary_pos_emb(
+    q: torch.Tensor,
+    k: torch.Tensor,
+    cos: torch.Tensor,
+    sin: torch.Tensor,
+    position_ids: torch.Tensor | None = None,
+    rotary_interleaved: bool = False,
+    inplace: bool = False,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    if k.shape[-1] != q.shape[-1]:
+        raise ValueError(f"q and k must have the same last dimension, got {q.shape} and {k.shape}")
+    if cos.shape[-1] != sin.shape[-1] or cos.shape[-1] * 2 != q.shape[-1]:
+        raise ValueError(f"cos/sin shape {cos.shape}/{sin.shape} is incompatible with q shape {q.shape}")
+    if cos.stride(-1) != 1 or sin.stride(-1) != 1:
+        raise ValueError("cos and sin must be contiguous at the last dimension")
+    if q.shape[:-2] != k.shape[:-2]:
+        raise ValueError(f"q and k must have the same token shape, got {q.shape[:-2]} and {k.shape[:-2]}")
+    q_shape = q.shape
+    k_shape = k.shape
+    if position_ids is not None:
+        if position_ids.shape != q.shape[:-2]:
+            raise ValueError(f"position_ids must have shape {q.shape[:-2]}, got {position_ids.shape}")
+        position_ids = position_ids.view(-1)
+        seq_len = 0
+    else:
+        if len(q.shape) != 4:
+            raise ValueError(f"q must have 4 dimensions if position_ids is not provided, got {q.shape}")
+        seq_len = q.shape[-3]
+    q_view = q.view(-1, q.shape[-2], q.shape[-1])
+    k_view = k.view(-1, k.shape[-2], k.shape[-1])
+    head_dim = q_view.shape[-1]
+    padded_head_dim = max(triton.next_power_of_2(head_dim), 16)
+    if inplace:
+        _apply_rotary_pos_emb_inplace_kernel[(q_view.shape[0], )](
+            q_view,
+            k_view,
+            cos,
+            sin,
+            position_ids,
+            q_view.stride(0),
+            q_view.stride(1),
+            q_view.stride(2),
+            k_view.stride(0),
+            k_view.stride(1),
+            k_view.stride(2),
+            position_ids.stride(0) if position_ids is not None else 0,
+            cos.stride(0),
+            sin.stride(0),
+            seq_len,
+            q_view.shape[-2],
+            k_view.shape[-2],
+            head_dim,
+            padded_head_dim,
+            rotary_interleaved,
+            cos.shape[0],
+        )
+        return q_view.view(q_shape), k_view.view(k_shape)
+
+    q_embed = torch.empty_like(q_view)
+    k_embed = torch.empty_like(k_view)
+    _apply_rotary_pos_emb_kernel[(q_view.shape[0], )](
+        q_embed,
+        k_embed,
+        q_view,
+        k_view,
+        cos,
+        sin,
+        position_ids,
+        q_view.stride(0),
+        q_view.stride(1),
+        q_view.stride(2),
+        k_view.stride(0),
+        k_view.stride(1),
+        k_view.stride(2),
+        q_embed.stride(0),
+        q_embed.stride(1),
+        q_embed.stride(2),
+        k_embed.stride(0),
+        k_embed.stride(1),
+        k_embed.stride(2),
+        position_ids.stride(0) if position_ids is not None else 0,
+        cos.stride(0),
+        sin.stride(0),
+        seq_len,
+        q_view.shape[-2],
+        k_view.shape[-2],
+        head_dim,
+        padded_head_dim,
+        rotary_interleaved,
+        cos.shape[0],
+    )
+    return q_embed.view(q_shape), k_embed.view(k_shape)
