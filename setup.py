@@ -881,7 +881,7 @@ readme_path = os.path.join(get_base_dir(), "README.md")
 with open(readme_path, "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-_setup_kwargs = dict(
+setup(
     name=os.environ.get("FLAGTREE_WHEEL_NAME", "flagtree"),
     version=get_flagtree_version(),
     author="FlagOS",
@@ -939,5 +939,3 @@ _setup_kwargs = dict(
         ],
     },
 )
-
-setup(**_setup_kwargs)
