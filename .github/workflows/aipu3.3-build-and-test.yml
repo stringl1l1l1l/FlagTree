@@ -1,4 +1,4 @@
-name: AIPU-Build-And-Test
+name: AIPU3.3-Build-And-Test
 
 on:
   push:

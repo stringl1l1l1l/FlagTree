@@ -1,4 +1,4 @@
-name: Tsingmicro-Build-And-Test
+name: Tsingmicro3.3-Build-And-Test
 
 on:
   push:
@@ -12,7 +12,7 @@ concurrency:
 
 jobs:
   tsingmicro-build-and-test:
-    runs-on: flagtree-tsingmicro
+    runs-on: tsingmicro3.3
     if: ${{ github.repository == 'FlagTree/flagtree' || github.repository == 'flagos-ai/flagtree' }}
     steps:
       - name: Setup environment
@@ -39,6 +39,7 @@ jobs:
           set -x
           source ~/env.sh
           export FLAGTREE_BACKEND=tsingmicro
+          export TRITON_APPEND_CMAKE_ARGS="-DCMAKE_BUILD_TYPE=Release"
           cd python
           python3 -m pip install . --no-build-isolation
 

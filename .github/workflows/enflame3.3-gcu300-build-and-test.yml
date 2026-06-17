@@ -1,4 +1,4 @@
-name: Enflame-GCU300-3.3-Build-And-Test
+name: Enflame3.3-GCU300-Build-And-Test
 
 on:
   push:
@@ -11,8 +11,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  enflame-gcu300-33x-build-and-test:
-    runs-on: enflame-gcu300-33x
+  enflame-build-and-test:
+    runs-on: enflame3.3-gcu300
     if: ${{ github.repository == 'FlagTree/flagtree' || github.repository == 'flagos-ai/flagtree' }}
     steps:
       - name: Setup environment
