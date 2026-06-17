@@ -10,8 +10,8 @@ void populateGetLocalPeOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
                                         RewritePatternSet &patterns,
                                         PatternBenefit benefit);
 void populateGetNumPesOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
-                                        RewritePatternSet &patterns,
-                                        PatternBenefit benefit);
+                                       RewritePatternSet &patterns,
+                                       PatternBenefit benefit);
 } // namespace mlir::triton::tle
 
 #endif

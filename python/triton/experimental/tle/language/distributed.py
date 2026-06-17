@@ -27,7 +27,6 @@ def _as_positive_int(value: Any, label: str) -> int:
     return value
 
 
-
 # Get the current device id
 @tl.builtin
 def my_pe(dev_mem_ptr, _semantic=None, ret_dtype=tl.int32):

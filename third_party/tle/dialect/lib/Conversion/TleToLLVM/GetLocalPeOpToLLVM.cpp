@@ -1,7 +1,6 @@
 #include "tle/dialect/include/Conversion/TleToLLVM/GetLocalPeOpToLLVM.h"
 #include "tle/dialect/include/Tools/FlagcxUtils.h"
 
-
 #include "mlir/Conversion/LLVMCommon/Pattern.h"
 #include "mlir/Dialect/LLVMIR/LLVMDialect.h"
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
@@ -21,10 +20,9 @@ using namespace mlir;
 namespace ttg = mlir::triton::gpu;
 namespace tle = mlir::triton::tle;
 
-struct GetNumPesOpConversion
-    : public ConvertOpToLLVMPattern<tle::GetNumPesOp> {
+struct GetNumPesOpConversion : public ConvertOpToLLVMPattern<tle::GetNumPesOp> {
   GetNumPesOpConversion(LLVMTypeConverter &typeConverter,
-                         PatternBenefit benefit)
+                        PatternBenefit benefit)
       : ConvertOpToLLVMPattern(typeConverter, benefit) {}
 
   LogicalResult
@@ -44,7 +42,6 @@ struct GetNumPesOpConversion
     return success();
   }
 };
-
 
 struct GetLocalPeOpConversion
     : public ConvertOpToLLVMPattern<tle::GetLocalPeOp> {
@@ -78,7 +75,7 @@ void tle::populateGetLocalPeOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
 }
 
 void tle::populateGetNumPesOpToLLVMPatterns(LLVMTypeConverter &typeConverter,
-                                             RewritePatternSet &patterns,
-                                             PatternBenefit benefit) {
+                                            RewritePatternSet &patterns,
+                                            PatternBenefit benefit) {
   patterns.add<GetNumPesOpConversion>(typeConverter, benefit);
 }
