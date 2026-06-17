@@ -1,5 +1,6 @@
 #include "mlir/Dialect/LLVMIR/LLVMTypes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/Interfaces/SideEffectInterfaces.h"
 #include "tle/dialect/include/IR/Dialect.h"
 #include "triton/Dialect/Triton/IR/Types.h"
 #include "triton/Dialect/Triton/IR/Utility.h"
@@ -477,6 +478,17 @@ LogicalResult InsertTileOp::verify() {
   }
 
   return success();
+}
+
+
+void DSLRegionOp::getEffects(
+    SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
+        &effects) {
+  // TODO: Conservative memory effects on all dsl_region ops so empty deferred
+  // bodies are not DCE'd before materialize lowering exists. Narrow this to
+  // alias operands or deferred-only once materialize is implemented.
+  effects.emplace_back(MemoryEffects::Read::get());
+  effects.emplace_back(MemoryEffects::Write::get());
 }
 
 LogicalResult DSLRegionOp::verify() {

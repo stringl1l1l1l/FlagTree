@@ -423,6 +423,12 @@ class CUDABackend(BaseBackend):
             passes.ttgpuir.add_concurrency_sanitizer(pm)
         passes.ttgpuir.add_allocate_global_scratch_memory(pm)
         nvidia.passes.ttnvgpuir.add_proxy_fence_insertion(pm, capability)
+        # Materialize deferred tle_raw sources before inlining DSL regions.
+        from .deferred_raw import (
+            finish_deferred_raw_materialize,
+            deferred_raw_materialize,
+        )
+        deferred_raw_materialize(pm)
         # Inline TLE DSL regions before TritonGPU->LLVM lowering so no
         # `tle.dsl_region` op survives into the conversion pipeline.
         tle.raw_passes.add_tle_dsl_region_inline(pm)
@@ -446,6 +452,7 @@ class CUDABackend(BaseBackend):
             CUDABackend.instrumentation.patch("llvmir_to_llvm", pm, mod.context)
 
         pm.run(mod, 'make_llir')
+        finish_deferred_raw_materialize()
 
         if knobs.compilation.dump_ir_extract_di_local_variables:
             # comments below on why separate it

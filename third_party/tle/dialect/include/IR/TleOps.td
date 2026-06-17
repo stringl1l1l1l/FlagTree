@@ -249,7 +249,7 @@ def Tle_RemotePointersOp : Tle_Op<"remote_pointers", [Pure]> {
 }
 
 def Tle_DSLRegionOp : Tle_Op<"dsl_region", [IsolatedFromAbove, MemDescViewTrait,
-                                            RecursiveMemoryEffects]> {
+                                            DeclareOpInterfaceMethods<MemoryEffectsOpInterface>]> {
   let arguments = (ins
     Variadic<Tle_ArgType>:$inputs,
     StrAttr:$region_dialect,
