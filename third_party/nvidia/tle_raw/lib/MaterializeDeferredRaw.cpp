@@ -40,7 +40,8 @@ public:
 
       const nv_tle_raw::DeferredRawSourceEntry &entry = it->second;
       (void)entry;
-      // TODO: clang CUDA -> MLIR LLVM dialect body, then splice into dsl_region.
+      // TODO: clang CUDA -> MLIR LLVM dialect body, then splice into
+      // dsl_region.
       op.emitError("deferred raw materialization is not implemented yet");
       return WalkResult::interrupt();
     });

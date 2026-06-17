@@ -8,8 +8,6 @@ llvm::StringMap<DeferredRawSourceEntry> &getDeferredRawSourceRegistry() {
   return gDeferredRawSourceRegistry;
 }
 
-void clearDeferredRawSourceRegistry() {
-  gDeferredRawSourceRegistry.clear();
-}
+void clearDeferredRawSourceRegistry() { gDeferredRawSourceRegistry.clear(); }
 
 } // namespace mlir::triton::nvidia::tle_raw

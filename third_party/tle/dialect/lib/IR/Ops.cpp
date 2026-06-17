@@ -480,7 +480,6 @@ LogicalResult InsertTileOp::verify() {
   return success();
 }
 
-
 void DSLRegionOp::getEffects(
     SmallVectorImpl<SideEffects::EffectInstance<MemoryEffects::Effect>>
         &effects) {

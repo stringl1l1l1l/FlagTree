@@ -7,9 +7,9 @@
 #include "mlir/Target/LLVMIR/Dialect/NVVM/NVVMToLLVMIRTranslation.h"
 #include "nvidia/hopper/include/Transforms/Passes.h"
 #include "nvidia/include/Dialect/NVWS/Transforms/Passes.h"
-#include "passes.h"
 #include "nvidia/tle_raw/include/DeferredRawSourceRegistry.h"
 #include "nvidia/tle_raw/include/Passes.h"
+#include "passes.h"
 #include "triton/Dialect/TritonNvidiaGPU/IR/Dialect.h"
 #include "triton/Dialect/TritonNvidiaGPU/Transforms/Passes.h"
 #include "llvm/IR/Constants.h"
@@ -17,7 +17,7 @@
 #include <pybind11/stl.h>
 #include <pybind11/stl_bind.h>
 
-#include "llvm/Support/raw_ostream.h" 
+#include "llvm/Support/raw_ostream.h"
 
 namespace py = pybind11;
 namespace ttng = mlir::triton::nvidia_gpu;
@@ -146,7 +146,6 @@ static void checkMatmulConstraints(const std::string &A_dtype,
   }
 }
 
-
 static void setDeferredRawPendingSources(py::dict sources) {
   mlir::triton::nvidia::tle_raw::clearDeferredRawSourceRegistry();
   for (auto item : sources) {
@@ -158,15 +157,13 @@ static void setDeferredRawPendingSources(py::dict sources) {
     rawEntry.regionDialect = entry["region_dialect"].cast<std::string>();
     if (entry.contains("extern_func_name") &&
         !entry["extern_func_name"].is_none()) {
-      rawEntry.externFuncName =
-          entry["extern_func_name"].cast<std::string>();
+      rawEntry.externFuncName = entry["extern_func_name"].cast<std::string>();
     }
     rawEntry.source = entry["source"].cast<std::string>();
     if (entry.contains("hint"))
       rawEntry.hint = entry["hint"].cast<std::string>();
     mlir::triton::nvidia::tle_raw::getDeferredRawSourceRegistry()[key] =
         std::move(rawEntry);
-    
   }
 }
 

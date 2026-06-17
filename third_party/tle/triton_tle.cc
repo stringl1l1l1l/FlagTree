@@ -528,7 +528,6 @@ void init_tle_raw_ir(py::module &&m) {
   builder_cls->def("get_context", &TritonOpBuilder::getContext);
 }
 
-
 void init_tle_raw_passes(py::module &&m) {
   ADD_PASS_WRAPPER_0("add_tle_convert_arg_to_memdesc",
                      mlir::triton::tle::createTleConvertArgToMemDesc);
