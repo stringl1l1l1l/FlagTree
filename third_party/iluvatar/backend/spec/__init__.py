@@ -61,4 +61,5 @@ __all__ = [
     "bmm",
     "language_modify_all",
     "corex_sme",
+    "compute_spec_key",
 ]

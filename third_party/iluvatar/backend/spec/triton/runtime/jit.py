@@ -56,6 +56,17 @@ def ext_JITFunction_spec_of(arg):
     return (arg % 4 == 0, arg % JITFunction.divisibility_8 == 0, arg == 1)
 
 
+def compute_spec_key(v):
+    if hasattr(v, "data_ptr") and (v.data_ptr() % 4 == 0):
+        return "D"
+    elif isinstance(v, int):
+        if v % 4 == 0:
+            return "D"
+        elif v == 1:
+            return "1"
+    return "N"
+
+
 def is_corex_param(x, enable_sme):
     if enable_sme:
         if hasattr(x, "data_ptr"):
